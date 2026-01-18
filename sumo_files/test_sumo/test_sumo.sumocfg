@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-01-15T11:57:42.433219+05:45 by Eclipse SUMO sumo 1.25.0
+-->
+
+<sumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/sumoConfiguration.xsd">
+
+    <input>
+        <net-file value="test_sumo.net.xml"/>
+        <additional-files value="trips.trips.xml"/>
+    </input>
+
+</sumoConfiguration>
