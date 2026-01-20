@@ -11,30 +11,29 @@ with open("config.yaml", "r") as f:
 
 traci.start(["sumo", "-c", sumo_config_file_path])
 
+
 # controlled traffic junction ids
 tls_ids = traci.trafficlight.getIDList()
+
 
 # Choose first jucntion
 tls_id = tls_ids[0]
 
+
 # Find incoming lanes only
-incoming_lanes = []
-net = sumolib.net.readNet(sumo_net_file_path)
-for edge in net.getNode(tls_id).getIncoming():
-    for lane in edge.getLanes():
-        incoming_lanes.append(lane.getID())
-
-print(f"Incoming lanes of Junction {tls_id}: {incoming_lanes}")
-
 junction_steps = {tls_id: [] for tls_id in tls_ids}
 junction_waiting_vehicles = {tls_id: [] for tls_id in tls_ids}
 junction_waiting_times = {tls_id: [] for tls_id in tls_ids}
-junction_incoming_lanes = {tls_ids: [] for tls_id in tls_ids}
+junction_incoming_lanes = {tls_id: [] for tls_id in tls_ids}
 
+net = sumolib.net.readNet(sumo_net_file_path)
 # find incoming lanes
 for tls_id in tls_ids:
     for edge in net.getNode(tls_id).getIncoming():
-        junction_incoming_lanes[tls_id] = [lane.getID() for lane in edge.getLanes()]
+        junction_incoming_lanes[tls_id] += [lane.getID() for lane in edge.getLanes()]
+
+print(f"Incoming lanes: {junction_incoming_lanes}")
+
 
 for step in range(100):
     # lane_ids = traci.trafficlight.getControlledLanes(tls_id) # it gives both incoming and outgoing lanes
@@ -45,6 +44,7 @@ for step in range(100):
         for lane_id in junction_incoming_lanes[tls_id]:
             total_waiting += traci.lane.getLastStepHaltingNumber(lane_id)
             total_wait_time += traci.lane.getWaitingTime(lane_id)
+            print(f"Step {step}: LaneID: {lane_id}, Waiting V: {total_waiting} ")
 
         junction_steps[tls_id].append(step)
         junction_waiting_vehicles[tls_id].append(total_waiting)

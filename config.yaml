@@ -1,6 +1,5 @@
 sumo:
-  config_file: sumo_files/test_sumo/test_sumo.sumocfg
-  net_file: sumo_files/test_sumo/test_sumo.net.xml
+  config_file: sumo_files/learn/ujjwal.sumocfg
+  net_file: sumo_files/learn/ujjwal.net.xml
   step_length: 1.0
   gui: false
-  gridlock_detection_time: 300.0
