@@ -1,5 +1,55 @@
 sumo:
-  config_file: sumo_files/learn/ujjwal.sumocfg
-  net_file: sumo_files/learn/ujjwal.net.xml
+  config_file: sumo_files/test_sumo/test_sumo.sumocfg
   step_length: 1.0
   gui: false
+  gridlock_detection_time: 300.0
+rl:
+  gamma: 0.95
+  lr: 0.0001
+  entropy_coeff: 0.0001
+  train_batch_size: 512
+  sgd_minibatch_size: 64
+  num_sgd_iter: 20
+  clip_param: 0.2
+  model:
+    fcnet_hiddens:
+    - 128
+    - 64
+    fcnet_activation: relu
+traffic:
+  yellow_time: 3 # seconds
+  green_time: 20 # seconds
+  durations:
+    min: 10
+    max: 60
+    step: 10
+  priority_weights:
+    truck: 10.0
+    bus: 5.0
+    car: 1.0
+    motorcycle: 1.0
+training:
+  federated_rounds: 200
+  local_steps_per_round: 1000
+  n_clusters: 2
+  save_freq: 10
+  patience:
+    enabled: true
+    epochs: 20
+    min_reward_delta: 0.05
+evaluation:
+  gui: false
+  steps: 10000
+system:
+  server_host: localhost
+  server_port: 12345
+  max_roads: 7
+  controlled_junctions:
+  - J1
+  - J2
+  - J5
+  - J7
+  model_save_path: saved_models/universal_models
+  log_dir: logs
+  plot_dir: plots
+  silent: true
