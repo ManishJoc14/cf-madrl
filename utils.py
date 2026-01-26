@@ -164,6 +164,14 @@ class RunningNorm:
     def normalize(self, x):
         return (x - self.mean) / (np.sqrt(self.var) + 1e-8)
 
+    def get_state(self):
+        return {"mean": self.mean, "var": self.var, "count": self.count}
+
+    def set_state(self, state):
+        self.mean = np.array(state["mean"])
+        self.var = np.array(state["var"])
+        self.count = state["count"]
+
 
 class Logger:
     @staticmethod
@@ -281,21 +289,22 @@ def scan_topology(config):
         if logics:
             current_program_id = conn.trafficlight.getProgram(j_id)
             active_logic = next(
-                (l for l in logics if l.programID == current_program_id), logics[0]
+                (ln for ln in logics if ln.programID == current_program_id),
+                logics[0],
             )
             num_phases = len(active_logic.phases)
 
-            max_lanes = max(max_lanes, len(lanes))
-            max_phases = max(max_phases, num_phases)
-
-        # fallback max
         max_lanes = max(max_lanes, len(lanes))
         max_phases = max(max_phases, num_phases)
+
+    # fallback max
+    max_lanes = max(max_lanes, len(lanes))
+    max_phases = max(max_phases, num_phases)
 
     # Close SUMO connection
     try:
         traci.close()
-    except:
+    except Exception:
         pass
 
     return max_lanes, max_phases
