@@ -6,3 +6,8 @@ scikit-learn
 matplotlib
 seaborn
 pandas
+rich
+ray[rllib]
+pettingzoo
+gymnasium
+torch
