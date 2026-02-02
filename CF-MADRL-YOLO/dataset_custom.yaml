@@ -1,0 +1,11 @@
+train: /content/drive/MyDrive/CF-MADRL-YOLO/for_train/train
+val: /content/drive/MyDrive/CF-MADRL-YOLO/for_train/val
+
+#train and val is path of train and val folders
+
+nc: 1
+# nc means number of classes
+
+names: ["vehicle"]
+
+model_name: yolo26n.pt
