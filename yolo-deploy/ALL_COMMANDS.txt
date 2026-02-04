@@ -1,0 +1,169 @@
+═══════════════════════════════════════════════════════════════════
+CF-MADRL TRAFFIC MONITOR - ALL COMMANDS
+═══════════════════════════════════════════════════════════════════
+
+STEP 1: TRANSFER FILES TO RASPBERRY PI
+───────────────────────────────────────────────────────────────────
+
+# From your computer, copy deployment folder
+scp -r yolo-deploy/ pi@192.168.1.XXX:~/cf-madrl/
+
+───────────────────────────────────────────────────────────────────
+STEP 2: SSH INTO RASPBERRY PI
+───────────────────────────────────────────────────────────────────
+
+ssh pi@192.168.1.XXX
+cd ~/cf-madrl/yolo-deploy
+
+───────────────────────────────────────────────────────────────────
+STEP 3: INSTALL (ONE-TIME SETUP)
+───────────────────────────────────────────────────────────────────
+
+chmod +x setup.sh
+./setup.sh
+
+# Wait 5-10 minutes for installation
+
+───────────────────────────────────────────────────────────────────
+STEP 4: FIND ESP32 CAMERA IP (OPTIONAL)
+───────────────────────────────────────────────────────────────────
+
+source .venv/bin/activate
+python3 find_esp32.py
+
+# Note the IP address shown
+
+───────────────────────────────────────────────────────────────────
+STEP 5: CONFIGURE
+───────────────────────────────────────────────────────────────────
+
+nano config.yaml
+
+# Change this line:
+#   url: "http://192.168.1.100:81/stream"
+# To your ESP32 IP:
+#   url: "http://192.168.1.XXX:81/stream"
+
+# Save: Ctrl+O, Enter
+# Exit: Ctrl+X
+
+───────────────────────────────────────────────────────────────────
+STEP 6: RUN MONITOR
+───────────────────────────────────────────────────────────────────
+
+source .venv/bin/activate
+python3 monitor.py
+
+# Monitor will run and output metrics to traffic_metrics.json
+
+───────────────────────────────────────────────────────────────────
+RUN MODES
+───────────────────────────────────────────────────────────────────
+
+# Background (no video display)
+python3 monitor.py
+
+# With video display
+python3 monitor.py --display
+
+# Use different config file
+python3 monitor.py --config my_config.yaml
+
+# Stop monitor
+Ctrl+C
+
+───────────────────────────────────────────────────────────────────
+MONITOR & DEBUG
+───────────────────────────────────────────────────────────────────
+
+# Check if monitor is running
+ps aux | grep monitor.py
+
+# View live output
+tail -f traffic_metrics.json
+
+# Kill monitor
+pkill -f monitor.py
+
+# Check camera stream in browser
+# Open: http://192.168.1.XXX/ (your ESP32 IP)
+
+───────────────────────────────────────────────────────────────────
+AUTO-START ON BOOT (OPTIONAL)
+───────────────────────────────────────────────────────────────────
+
+crontab -e
+
+# Add this line at the end:
+@reboot cd /home/pi/cf-madrl/yolo-deploy && /home/pi/cf-madrl/yolo-deploy/.venv/bin/python3 monitor.py
+
+# Save and exit
+
+───────────────────────────────────────────────────────────────────
+CONFIG.YAML QUICK REFERENCE
+───────────────────────────────────────────────────────────────────
+
+camera:
+  url: "http://192.168.1.XXX:81/stream"  # UPDATE THIS
+
+roi:  # Detection zone (adjust to match your lane)
+  y_min: 0.4  # 0.0 = top, 1.0 = bottom
+  y_max: 0.9
+
+output:
+  file: "traffic_metrics.json"  # PPO reads this
+  update_interval: 5  # Update every 5 seconds
+  display: false  # true to show video
+
+───────────────────────────────────────────────────────────────────
+OUTPUT FILE (traffic_metrics.json)
+───────────────────────────────────────────────────────────────────
+
+{
+  "timestamp": 1707049324.5,
+  "frame": 150,
+  "queue_length": 3,          # For PPO state
+  "avg_wait_time": 12.5,      # For PPO state
+  "total_vehicles": 5
+}
+
+───────────────────────────────────────────────────────────────────
+TROUBLESHOOTING
+───────────────────────────────────────────────────────────────────
+
+Problem: Can't connect to ESP32
+Solution: python3 find_esp32.py
+         Update config.yaml with correct IP
+
+Problem: Module not found
+Solution: source .venv/bin/activate
+         pip install -r requirements.txt
+
+Problem: Low FPS
+Solution: Edit config.yaml, increase update_interval to 10
+
+Problem: Monitor not updating metrics
+Solution: Check output.update_interval in config.yaml
+         Default is 5 seconds
+
+───────────────────────────────────────────────────────────────────
+FILES IN THIS FOLDER
+───────────────────────────────────────────────────────────────────
+
+monitor.py           - Main application (DO NOT EDIT)
+config.yaml          - All settings (EDIT THIS)
+setup.sh             - Installation script
+find_esp32.py        - Find camera IP
+requirements.txt     - Python packages
+README.md            - Documentation
+ALL_COMMANDS.txt     - This file
+
+best.pt              - best model
+traffic_metrics.json - Output (auto-generated)
+.venv/              - Virtual environment (auto-created)
+
+───────────────────────────────────────────────────────────────────
+
+THAT'S IT! ALL CONTROL VIA config.yaml
+
+For help: cat README.md

@@ -1,0 +1,75 @@
+# CF-MADRL Multi-Lane Traffic Monitor Configuration
+# Configure multiple camera feeds for intersection monitoring
+
+# ============================================================================
+# MODEL SETTINGS
+# ============================================================================
+model:
+  path: "best.pt"              # Our trained YOLO model (primary)
+  fallback_path: "yolo26n.pt"  # Base model used if primary fails to detect
+  conf_threshold: 0.3          # Detection confidence (0.0-1.0)
+  vehicle_classes: [1, 2, 3, 5, 7]  # COCO: car, motorcycle, bus, truck, train
+
+# ============================================================================
+# LANE CONFIGURATIONS (Multiple Cameras)
+# ============================================================================
+# UPDATE camera_url with ESP32 IP addresses
+
+lanes:
+  # Lane 1 - North approach
+  - id: "lane_1"
+    name: "North Lane"
+    camera_url: "http://192.168.1.100:81/stream"
+    roi:
+      y_min: 0.4    # Detection zone: 40% from top
+      y_max: 0.9    # Detection zone: 90% from top
+      x_min: 0.1    # Detection zone: 10% from left
+      x_max: 0.9    # Detection zone: 90% from right
+  
+  # Lane 2 - South approach
+  - id: "lane_2"
+    name: "South Lane"
+    camera_url: "http://192.168.1.101:81/stream"
+    roi:
+      y_min: 0.4
+      y_max: 0.9
+      x_min: 0.1
+      x_max: 0.9
+  
+  # Lane 3 - East approach
+  - id: "lane_3"
+    name: "East Lane"
+    camera_url: "http://192.168.1.102:81/stream"
+    roi:
+      y_min: 0.4
+      y_max: 0.9
+      x_min: 0.1
+      x_max: 0.9
+  
+  # Lane 4 - West approach
+  - id: "lane_4"
+    name: "West Lane"
+    camera_url: "http://192.168.1.103:81/stream"
+    roi:
+      y_min: 0.4
+      y_max: 0.9
+      x_min: 0.1
+      x_max: 0.9
+
+# Add more lanes as needed by copying the format above
+# To use fewer lanes, just comment out or delete unwanted entries
+
+# ============================================================================
+# VEHICLE TRACKING
+# ============================================================================
+tracking:
+  stop_speed_kmh: 3.0        # Below this speed = stopped vehicle
+  pixel_to_meter: 0.05       # Calibration: adjust based on camera height/angle
+
+# ============================================================================
+# OUTPUT FOR PPO ACTOR
+# ============================================================================
+output:
+  file: "traffic_metrics.json"    # PPO actor reads this file
+  update_interval: 5              # Update metrics every N seconds
+  display: false                  # Set true to show video windows (testing only)
