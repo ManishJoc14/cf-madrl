@@ -1,0 +1,121 @@
+\chapter{METHODOLOGY}
+
+\section{Overview}
+
+This chapter presents the theoretical foundations of CF-MADRL (Clustered Federated Multi-Agent Deep Reinforcement Learning) for decentralized traffic signal control. The chapter covers problem formulation, agent architecture, learning algorithms, and federated aggregation. Implementation details and specific hyperparameters are in Chapter 5.
+
+\section{System Architecture}
+
+CF-MADRL integrates four components: (i) a traffic simulation environment providing microscopic dynamics, (ii) local RL agents (one per junction), (iii) a federated learning server for clustering and aggregation, and (iv) a deployment controller for real-time signal control.
+
+\section{Problem Formulation}
+
+We model urban traffic signal control as a collection of decentralized MDPs. Each junction $i$ has its own MDP $M_i = \langle S_i, A_i, P_i, R_i, \gamma \rangle$. Agents have only local access to their state $S_i$ and reward $R_i$, though transitions and rewards are coupled through traffic flows. The learning objective for agent $i$ is:
+
+\begin{equation}
+J_i(\pi_i) = \mathbb{E}_{s_0 \sim \rho_0, a_t \sim \pi_i} \left[ \sum_{t=0}^{\infty} \gamma^t R_i(s_t, a_t, s_t') \right]
+\end{equation}
+
+In multi-agent settings, the environment is inherently non-stationary. Federated learning helps mitigate this by periodically synchronizing policies across similar agents.
+
+\section{Agent Architecture and Learning}
+
+Each agent is an Actor--Critic architecture combining policy-gradient and value-based methods for variance reduction. The actor maintains a stochastic policy $\pi_\theta(a \mid s)$ over actions, while the critic maintains a value estimator $V_\phi(s)$. Both share a common feature extractor to reduce parameters and improve sample efficiency.
+
+Training uses Proximal Policy Optimization (PPO), which constrains policy updates through a clipped surrogate objective:
+
+\begin{equation}
+L^{\text{CLIP}}(\theta) = \mathbb{E}_t \left[ \min \left( r_t(\theta) \hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_t \right) \right]
+\end{equation}
+
+where $r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}$ is the policy ratio and $\epsilon = 0.2$ is the clipping range. Advantages are estimated using Generalized Advantage Estimation (GAE):
+
+\begin{equation}
+\hat{A}_t^{\text{GAE}} = \sum_{l=0}^{\infty} (\gamma \lambda)^l \delta_{t+l}
+\end{equation}
+
+where $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$ is the TD residual.
+
+\section{State, Action, and Reward Design}
+
+\textbf{State:} At each time step, agent $i$ observes queue length $q_{i,l}$, waiting time $w_{i,l}$, and current phase $\phi_i$ for each incoming lane $l$. States are padded to a fixed maximum size and normalized using running statistics to stabilize learning.
+
+\textbf{Action:} Actions are discrete, encoding both phase and duration via integer arithmetic:
+\begin{equation}
+\text{dur\_idx} = a \bmod n_d, \quad \text{phase\_idx} = \lfloor a / n_d \rfloor \bmod n_p
+\end{equation}
+where $n_d$ is the number of durations and $n_p$ is the number of valid green phases. This decoding scheme is flexible and accommodates junctions with varying phase counts.
+
+\textbf{Reward:} The reward function penalizes congestion:
+\begin{equation}
+R_i(s_i^t, a_i^t) = -\frac{Q_i^t + W_i^t}{L}
+\end{equation}
+where $Q_i^t$ is total queue length, $W_i^t$ is total waiting time, and $L$ is the number of lanes. Normalization by $L$ ensures scale-independence across different network sizes.
+
+\section{Federated Learning and Clustering}
+
+Agents train locally using PPO for a fixed number of steps, then upload weights to a federated server. To avoid negative transfer (poor performance when averaging dissimilar agents), the server clusters agents by weight similarity using K-Means. For each cluster, cluster-wise Federated Averaging is performed:
+
+\begin{equation}
+W_k^{\text{global}} = \frac{1}{|\mathcal{C}_k|} \sum_{i \in \mathcal{C}_k} w_i
+\end{equation}
+
+Agents in cluster $\mathcal{C}_k$ download and adopt the aggregated weights $W_k^{\text{global}}$. This approach:
+\begin{itemize}
+    \item Reduces negative transfer by grouping similar agents.
+    \item Enables positive knowledge transfer within clusters.
+    \item Provides privacy: only weights are shared, not raw observations.
+    \item Scales naturally as agents train in parallel.
+\end{itemize}
+
+\section{Traffic State Estimation and Deployment}
+
+During hardware deployment (e.g., Raspberry Pi), the system estimates traffic state from camera video using YOLOv11 object detection. Vehicles are detected, tracked across frames, and their speed is estimated via optical flow and camera calibration. Vehicles with speed below a threshold are marked as "waiting". The resulting state vector (queue, wait time, phase) is then fed to the learned policy network.
+
+The complete hardware pipeline consists of:
+\begin{enumerate}
+    \item Camera capture at fixed frame rate.
+    \item Vehicle detection (YOLOv11).
+    \item Vehicle tracking and speed estimation.
+    \item Lane-level occupancy classification.
+    \item Policy inference with normalized state.
+    \item Signal control via microcontroller (e.g., ESP32).
+\end{enumerate}
+
+This enables seamless transition from SUMO simulation to real-world deployment.
+
+\section{Simulation Environment and Training}
+
+Training is conducted in the SUMO traffic simulator, which provides:
+\begin{itemize}
+    \item Microscopic traffic dynamics with car-following models.
+    \item Repeatable, scalable evaluation without real-world disruption.
+    \item Ground-truth measurements of queue, waiting time, and travel time.
+\end{itemize}
+
+Each training episode corresponds to a fixed simulation period (e.g., 1000 steps). Agents collect experience, receive rewards based on congestion metrics, and perform gradient updates. Across multiple episodes and federated rounds, agents incrementally learn policies adapted to local traffic patterns.
+
+The federated training loop iterates for a fixed number of global rounds (e.g., 70 rounds). In each round:
+\begin{enumerate}
+    \item Agents train locally for 1000 environment steps.
+    \item Agents upload weights to the server.
+    \item Server clusters by weight similarity.
+    \item Server aggregates weights within clusters.
+    \item Agents download aggregated weights.
+\end{enumerate}
+
+\section{Evaluation and Comparison}
+
+Performance is evaluated using standard traffic metrics:
+\begin{itemize}
+    \item Average Waiting Time (AWT): Mean vehicle delay. Lower is better.
+    \item Average Queue Length (AQL): Mean vehicles waiting. Lower is better.
+    \item Total Delay and Travel Time: Cumulative measures of congestion. Lower is better.
+    \item Throughput: Vehicles cleared per hour. Higher is better.
+\end{itemize}
+
+Learned policies are compared against a fixed-time baseline: traffic lights with predetermined static durations (42 seconds per phase from SUMO network configuration). This baseline is suboptimal but robust, providing a practical lower bound for comparison.
+
+During training, convergence is tracked by episode reward (should increase over time) and policy/value loss (should decrease or stabilize).
+
+\end{plaintext}

@@ -1,0 +1,655 @@
+\chapter{METHODOLOGY}
+
+\section{Overview}
+
+This chapter presents the general methodology and theoretical foundations of the CF-MADRL (Clustered Federated Multi-Agent Deep Reinforcement Learning) system for decentralized traffic signal control. We describe the problem formulation, architectural design, learning algorithms, and evaluation framework. Specific implementation values, hyperparameters, and concrete system configurations are detailed in Chapter 5 (IMPLEMENTATION DETAILS).
+
+\section{System Block Diagram/Architecture}
+
+The CF-MADRL system integrates four functional components:
+\begin{itemize}
+  \item \textbf{Traffic simulation environment:} provides microscopic traffic dynamics and the state features used for learning.
+  \item \textbf{Local RL agents:} one PPO agent per junction that learns signal control from local observations and rewards.
+  \item \textbf{Federated learning server:} clusters agents by weight similarity and applies cluster-wise FedAvg.
+  \item \textbf{Deployment controller:} runs the trained policy in real time and applies the selected phase and duration.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{img/architecture.png}
+\caption{CF-MADRL system architecture.}
+\label{fig:architecture}
+\end{figure}
+
+\subsection{Simulation Environment}
+
+The simulation environment provides a realistic, controlled setting for training and evaluation. It generates microscopic traffic dynamics with vehicles following established car-following models. At each discrete time step $t$, the simulator computes observable state features for each intersection (queue lengths, vehicle waiting times, current phase) and advances the traffic state according to traffic flow rules. The simulator is essential for safe, repeatable, scalable training before deployment. It allows us to evaluate policies across diverse traffic demand patterns and network topologies without risking traffic disruption.
+
+\subsection{Local Learning Agents}
+
+Each intersection is controlled by an independent reinforcement learning agent. The agent observes local traffic state, selects an action (which phase to activate and for how long), and receives a reward signal based on traffic efficiency metrics. The agent uses Proximal Policy Optimization (PPO) for local policy learning. Training is episodic: each episode represents a fixed simulation period, and the agent collects experience during that period. After each episode, the agent can optionally upload its learned model weights to the federated server for collaborative learning with other agents.
+
+\subsection{Federated Learning Server}
+
+The server implements a clustering-based federated aggregation scheme. Periodically, agents transmit their policy weights to the server. The server clusters agents by weight similarity using an unsupervised learning algorithm (e.g., K-Means). This clustering partitions agents into groups with similar learned behaviors. For each cluster, a local FedAvg (Federated Averaging) operation computes the centroid of weights within the cluster. The aggregated weights are then redistributed to agents in each cluster. This design prevents negative transfer (where dissimilar agents pull each other's weights in opposite directions) while enabling positive knowledge transfer among similar intersections.
+
+\subsection{Hardware and Deployment}
+
+For real-world demonstration, learned policies are deployed on edge devices (e.g., Raspberry Pi). These devices capture video observations, process them using computer vision (e.g., object detection) to estimate local traffic state, run the learned policy network, and output control commands to physical actuators (e.g., microcontrollers managing LED traffic lights). This hardware pillar validates that trained policies can run with acceptable latency and inference cost in resource-constrained environments.
+
+\section{Problem Formulation}
+
+\subsection{Decentralized Multi-Agent Setting}
+
+Urban traffic signal control involves coordinating signals across multiple intersections to improve network-wide traffic flow. In our decentralized setting, there is no single central controller; instead, each intersection is controlled by its own agent.
+
+This decentralized approach has several advantages:
+\begin{itemize}
+  \item \textbf{Lower central computation:} no single node must process all intersections.
+  \item \textbf{Robustness:} the system can keep operating even if communication is limited.
+  \item \textbf{Privacy:} raw traffic observations remain local to each junction.
+  \item \textbf{Scalability:} adding more junctions adds more agents, without redesigning a single large controller.
+\end{itemize}
+
+\subsection{Decentralized Markov Decision Process}
+
+We model the traffic signal control problem as a collection of coupled, localized Markov Decision Processes (MDPs). Each junction $i \in \{1, \ldots, N\}$ has its own MDP:
+\begin{equation}
+M_i = \langle S_i, A_i, P_i, R_i, \gamma_i \rangle
+\end{equation}
+where:
+\begin{itemize}
+    \item $S_i$ is the state space of agent $i$ (local observation of traffic at that junction).
+    \item $A_i$ is the action space (control commands for traffic phases and durations).
+    \item $P_i(s_i' \mid s_i, a_i)$ is the transition probability (how traffic evolves given an action).
+    \item $R_i(s_i, a_i, s_i')$ is the local reward function (traffic efficiency metric).
+    \item $\gamma_i \in [0, 1)$ is a discount factor.
+\end{itemize}
+
+The key property is \textbf{locality}: agent $i$ has direct access only to $S_i$ and $R_i$. Transitions at intersection $i$ also depend on actions and states of neighboring junctions (through vehicle flows), making the environment non-stationary from the perspective of agent $i$. However, each agent learns only from its direct observations and feedback, not from global information.
+
+\subsection{Learning Objective}
+
+The objective for each agent $i$ is to learn a policy $\pi_i(a_i \mid s_i)$ that maximizes its discounted cumulative reward:
+\begin{equation}
+J_i(\pi_i) = \mathbb{E}_{s_0 \sim \rho_0, a_t \sim \pi_i} \left[ \sum_{t=0}^{\infty} \gamma_i^t R_i(s_t, a_t, s_t') \right]
+\end{equation}
+where $\rho_0$ is the initial state distribution and the expectation is over trajectories rolled out under $\pi_i$ in the environment. Because of the coupling between agents (vehicles move between junctions), the policies interact: the outcome of agent $i$'s decisions affects the reward and state distribution seen by other agents. Unlike fully cooperative games, CF-MADRL does not require explicit communication of policies, only periodic sharing of model parameters through the federated server.
+
+\subsection{Non-Stationarity and Convergence Challenges}
+
+In multi-agent settings, the environment is inherently non-stationary: as other agents improve their policies, the transition dynamics and reward distributions seen by agent $i$ change. Classical single-agent RL convergence guarantees do not directly apply. Federated learning helps mitigate this by periodically synchronizing policies across similar agents, reducing the rate of change agents experience, and improving the stability of learning curves.
+
+\section{Agent Architecture}
+
+\subsection{Actor-Critic Design Rationale}
+
+Each junction agent is implemented as an Actor--Critic architecture. This design combines the strengths of policy-gradient methods (direct policy learning) and value-based methods (learned baselines for variance reduction).
+
+The \textbf{Actor} maintains a parameterized stochastic policy:
+\begin{equation}
+\pi_\theta(a \mid s) = \alpha_\theta(s)[a]
+\end{equation}
+where $\alpha_\theta$ is a neural network that outputs a probability distribution over actions given state $s$. The actor is optimized to maximize expected cumulative reward.
+
+The \textbf{Critic} maintains a value function estimator:
+\begin{equation}
+V_\phi(s) \approx \mathbb{E}[R^t \mid s] = \mathbb{E}\left[\sum_{k=t}^{\infty} \gamma^k r(s_{t+k}, a_{t+k})\right]
+\end{equation}
+where $\phi$ are the value network parameters. The critic is trained to minimize the temporal difference (TD) error.
+
+\subsection{Shared Feature Extractor}
+
+In practice, the actor and critic share a common feature extractor (initial neural network layers). This design reduces the number of parameters, improves sample efficiency, and encourages the agent to learn representations that are useful for both policy and value estimation. The feature extractor learns to extract salient traffic features (e.g., queue patterns, phase timing) that inform both action selection and value prediction.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{img/agent.png}
+\caption{Actor--Critic agent architecture.}
+\label{fig:agent_architecture}
+\end{figure}
+
+\section{State, Action, and Reward Design}
+
+\subsection{State Space}
+
+\subsubsection{Local Traffic Observation}
+
+At each time step $t$, agent $i$ observes a local traffic state. This state typically includes measurable quantities from the junction and its incoming lanes. We can represent the state as:
+\begin{equation}
+\mathbf{s}_i^t = [q_{i,1}^t, \ldots, q_{i,L}^t, w_{i,1}^t, \ldots, w_{i,L}^t, c_i^t]
+\end{equation}
+where:
+\begin{itemize}
+    \item $q_{i,l}^t$ is the queue length (number of waiting vehicles) on lane $l$ of junction $i$ at time $t$.
+    \item $w_{i,l}^t$ is the average waiting time of vehicles on lane $l$.
+    \item $c_i^t$ is a context feature, such as the current signal cycle phase or a one-hot encoding of the phase.
+    \item $L$ is the number of incoming lanes.
+\end{itemize}
+
+\subsubsection{Padding and Standardization}
+
+Since different junctions may have different numbers of incoming lanes, we typically pad the state to a common maximum length. This ensures all agents share the same input dimensionality, simplifying network design and parameter sharing across junctions. Padding can use zeros or placeholder values.
+
+To stabilize neural network learning, observed features are normalized using running statistics (online mean and variance):
+\begin{equation}
+\hat{x}_t = \frac{x_t - \mu}{\sqrt{\sigma^2 + \epsilon}}
+\end{equation}
+where $\mu$ and $\sigma^2$ are the empirical mean and variance computed from a moving window of observations, and $\epsilon$ is a small constant for numerical stability. This normalization keeps activations in a reasonable range and reduces internal covariate shift, improving convergence.
+
+\subsection{Action Space}
+
+\subsubsection{Joint Phase-Duration Selection}
+
+Unlike single-decision controllers, this system encodes both phase selection and phase duration in each action. The action space is discrete:
+\begin{equation}
+A_i = \{0, 1, \ldots, n_a - 1\}
+\end{equation}
+where $n_a$ is the total number of distinct (phase, duration) pairs supported by the junction. The action is a single integer; decoding into phase and duration uses integer arithmetic.
+
+\subsubsection{Action Decoding}
+
+We decompose action $a_i^t$ into two components: a duration index and a phase index. Let $n_d$ be the number of supported durations and $n_p$ be the number of valid phases. Then:
+\begin{equation}
+\text{dur\_idx} = a_i^t \bmod n_d
+\end{equation}
+\begin{equation}
+\text{phase\_idx\_raw} = \left\lfloor \frac{a_i^t}{n_d} \right\rfloor
+\end{equation}
+
+The raw phase index is further mapped to valid phases (in case the junction has fewer phases than the maximum supported across the network):
+\begin{equation}
+\text{phase\_idx\_local} = \text{phase\_idx\_raw} \bmod n_p
+\end{equation}
+
+This decoding scheme is flexible: it works for junctions with varying numbers of phases and durations, and it keeps the action space size fixed independent of network topology.
+
+\subsubsection{Action Semantics}
+
+The selected phase defines which incoming lanes receive a green signal. The selected duration defines how long (in seconds) the green signal is maintained before transitioning to other phases. Transitions between phases typically include a mandatory yellow ("all-red") interval for safety.
+
+\subsection{Reward Function}
+
+\subsubsection{Traffic Efficiency Metric}
+
+The reward function should incentivize actions that reduce traffic congestion and vehicle delays. In this work, we use a simple combined penalty of queue length and waiting time:
+\begin{equation}
+R_i(s_i^t, a_i^t) = -\left(Q_i^t + W_i^t\right)
+\end{equation}
+where:
+\begin{itemize}
+    \item $Q_i^t = \sum_{l=1}^{L} q_{i,l}^t$ is the total queue length at junction $i$.
+    \item $W_i^t = \sum_{l=1}^{L} w_{i,l}^t$ is the total waiting time across all lanes.
+\end{itemize}
+
+The negative sign ensures that lower congestion corresponds to higher reward.
+
+\subsubsection{Normalization}
+
+Raw queue and waiting time values can have highly different scales depending on traffic demand. To make the reward stable and comparable across different time periods and networks, we normalize by a reference quantity, such as the number of lanes:
+\begin{equation}
+R_i(s_i^t, a_i^t) = -\frac{Q_i^t + W_i^t}{L}
+\end{equation}
+
+This ensures the reward magnitude is roughly independent of network size, improving learning stability and enabling transfer of learned policies to different networks.
+
+\subsubsection{Reward Interpretation}
+
+At each time step, the policy receives immediate reward equal to the negative congestion metric. Actions that reduce queue and waiting time increase (make less negative) the reward. Over a full episode (e.g., one hour of simulation), the cumulative discounted reward reflects the total traffic efficiency achieved by the learned policy.
+
+\section{Local Policy Learning}
+
+\subsection{On-Policy Reinforcement Learning}
+
+Each agent learns its local policy via on-policy training: the agent collects experience using its current policy, computes returns and advantages, and updates the policy based on that data. On-policy learning is naturallysynchronized with the federated aggregation schedule: agents collect experience locally, then upload weights and aggregate with the server.
+
+\subsection{Proximal Policy Optimization (PPO)}
+
+Proximal Policy Optimization is a policy-gradient algorithm that is particularly effective for on-policy learning. The motivation for PPO comes from the difficulty of choosing appropriate learning rates in policy gradient methods. Un-constrained policy gradient updates can be very large and destructive, leading to poor convergence. PPO addresses this by constraining the magnitude of policy updates through a clipped surrogate objective.
+
+\subsubsection{Policy Gradient and the Surrogate Objective}
+
+Standard policy gradient updates the policy parameters in the direction of the gradient of log-probability weighted by returns:
+\begin{equation}
+\nabla_\theta J(\theta) = \mathbb{E}_t \left[ \nabla_\theta \log \pi_\theta(a_t \mid s_t) \hat{A}_t \right]
+\end{equation}
+where $\hat{A}_t$ is an advantage estimate (described below). PPO reformulates this as an importance-weighted objective. Let $r_t(\theta)$ be the ratio of the new policy to the old policy:
+\begin{equation}
+r_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)}
+\end{equation}
+The surrogate objective is:
+\begin{equation}
+L^{\text{surr}}(\theta) = \mathbb{E}_t \left[ r_t(\theta) \hat{A}_t \right]
+\end{equation}
+
+\subsubsection{Clipping Mechanism}
+
+To prevent excessively large updates, PPO clips the ratio $r_t(\theta)$ to a neighborhood around 1:
+\begin{equation}
+L^{\text{CLIP}}(\theta) = \mathbb{E}_t \left[ \min \left( r_t(\theta) \hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon) \hat{A}_t \right) \right]
+\end{equation}
+where $\epsilon$ is a hyperparameter (e.g., $\epsilon = 0.2$). The clipping ensures that if the probability ratio moves outside the range $[1-\epsilon, 1+\epsilon]$, the gradient contribution is masked. This effectively limits the size of policy updates, reducing variance and improving stability.
+
+\subsubsection{Advantage Estimation with Generalized Advantage Estimation (GAE)}
+
+The advantage $\hat{A}_t$ measures whether an action was better or worse than the expected value:
+\begin{equation}
+A_t = Q_t - V(s_t)
+\end{equation}
+where $Q_t$ is the true action value (sum of future discounted rewards) and $V(s_t)$ is the state value (expected future reward). Since $Q_t$ is unknown, we must estimate it from sampled returns. The temporal difference (TD) residual is:
+\begin{equation}
+\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)
+\end{equation}
+
+Generalized Advantage Estimation (GAE) computes advantages as an exponentially-weighted sum of TD residuals:
+\begin{equation}
+\hat{A}_t^{\text{GAE}} = \sum_{l=0}^{\infty} (\gamma \lambda)^l \delta_{t+l}
+\end{equation}
+where $\lambda \in [0, 1]$ is a smoothing parameter. GAE interpolates between low-variance but biased TD learning ($\lambda = 0$) and high-variance but unbiased Monte Carlo returns ($\lambda = 1$). This reduces variance while maintaining reasonable bias, improving the stability of policy gradient estimates.
+
+\subsection{Complete PPO Update}
+
+The agent collects a batch of experience (trajectories) under its current policy $\pi_{\theta_{\text{old}}}$. For each transition, it computes the TD residual $\delta_t$ and the GAE advantage $\hat{A}_t$. It also computes the return-to-go. Then it performs multiple gradient steps (mini-batch updates) on:
+\begin{equation}
+L^{\text{PPO}}(\theta) = L^{\text{CLIP}}(\theta) - c_1 L^{V}(\theta) + c_2 H(\theta)
+\end{equation}
+where:
+\begin{itemize}
+    \item $L^{\text{CLIP}}(\theta)$ is the clipped surrogate loss (above).
+    \item $L^{V}(\theta) = (R_t - V_\phi(s_t))^2$ is the value function loss (mean squared error between predicted and empirical returns).
+    \item $H(\theta) = -\mathbb{E}_t[\pi_\theta(a_t \mid s_t) \log \pi_\theta(a_t \mid s_t)]$ is a policy entropy bonus that encourages exploration.
+    \item $c_1$ and $c_2$ are weighting coefficients.
+\end{itemize}
+
+After performing K epochs of mini-batch training, the agent concludes this training phase and is ready to upload weights to the federated server (if applicable).
+
+\section{Privacy-Preserving Federated Learning}
+
+\subsection{Motivation for Federated Learning}
+
+In traditional centralized machine learning, all data is collected at a server, risks emerge from single points of failure, and privacy concerns arise from storing sensitive data centrally. In federated learning, each agent keeps its raw data private and contributes to model learning by sharing only aggregated model parameters. For traffic control, this means:
+
+\begin{itemize}
+    \item \textbf{Data Privacy}: Raw traffic observations (video, sensor measurements) remain local and are never sent to a central server.
+    \item \textbf{Scalability}: Each agent trains independently, making the system inherently distributed and reducing the central computational burden.
+    \item \textbf{Fault Tolerance}: If one agent fails, its data is not lost; other agents continue learning.
+    \item \textbf{Communication Efficiency}: Only model weights (smaller than raw observations) are transmitted.
+\end{itemize}
+
+\subsection{Federated Averaging (FedAvg)}
+
+The basic federated learning algorithm is Federated Averaging (FedAvg). The server maintains a global model $W^{\text{global}}$. In each round:
+\begin{enumerate}
+    \item Each agent downloads $W^{\text{global}}$ from the server.
+    \item Agents train locally using PPO for some number of steps, updating their local weights $w_i$.
+    \item Agents upload their updated weights to the server.
+    \item The server computes the average: $W^{\text{global}} \leftarrow \frac{1}{N} \sum_{i=1}^{N} w_i$.
+\end{enumerate}
+
+This averaging acts as a consensus step, biasing all agents toward a common model. However, vanilla FedAvg assumes all agents have compatible data distributions and objectives. In traffic control, this assumption is often violated: intersections in dense urban areas have different traffic patterns than those on highways; rush-hour traffic differs from off-peak traffic; and the optimal control strategy may vary significantly across the network.
+
+\subsection{Heterogeneity and Negative Transfer}
+
+When agents with dissimilar local data distributions are averaged together, the resulting model may perform worse than the individual agents' original models. This phenomenon is called \textbf{negative transfer}. In FedAvg, if agent A has learned a good policy for high-density traffic and agent B has learned a good policy for low-density traffic, averaging their weights produces a policy that is only mediocre at both tasks.
+
+This motivates clustered federated learning: instead of averaging all agents into one global model, we partition agents into clusters of similar agents and perform separate FedAvg within each cluster.
+
+\section{Clustered Federated Aggregation}
+
+\subsection{Weight-Based Clustering Approach}
+
+At the core of CF-MADRL is the observation that agents' learned weights encode information about their local problems. If two agents have learned similar policies for similar traffic scenarios, their weight vectors will be close in parameter space. Conversely, agents operating in fundamentally different environments (e.g., high vs. low traffic density) will have divergent weights.
+
+We cluster agents by weight similarity in parameter space. Let $w_i \in \mathbb{R}^d$ be the flattened policy weights for agent $i$ (all network parameters concatenated into a vector). The clustering algorithm partitions agents $\{1, \ldots, N\}$ into $K$ disjoint clusters $\{\mathcal{C}_1, \ldots, \mathcal{C}_K\}$ such that:
+
+\begin{equation}
+\min_{\mathcal{C}_1, \ldots, \mathcal{C}_K} \sum_{k=1}^{K} \sum_{i \in \mathcal{C}_k} \| w_i - \mu_k \|^2
+\end{equation}
+
+where $\mu_k$ is the centroid of cluster $\mathcal{C}_k$.
+
+\subsection{K-Means Clustering Algorithm}
+
+We use K-Means clustering, a standard unsupervised algorithm. K-Means iteratively:
+
+\begin{algorithm}[H]
+\caption{K-Means Clustering}
+\begin{algorithmic}[1]
+\State Initialize $K$ random centroids $\mu_1, \ldots, \mu_K$.
+\Repeat
+    \State Assign each agent $i$ to the nearest centroid: $\mathcal{C}_k = \arg\min_k \|w_i - \mu_k\|$.
+    \State Update each centroid: $\mu_k \leftarrow \frac{1}{|\mathcal{C}_k|} \sum_{i \in \mathcal{C}_k} w_i$.
+\Until{convergence or max iterations}
+\end{algorithmic}
+\end{algorithm}
+
+By partitioning agents based on learned weights, K-Means implicitly groups agents with similar traffic scenarios and learned solutions. Agents in the same cluster receive aggregated weights that represent the consensus policy within that cluster, which is most relevant to their specific problem.
+
+\subsection{Cluster-Wise Federated Averaging}
+
+Once clustering is complete, the server performs FedAvg separately within each cluster. For cluster $\mathcal{C}_k$:
+
+\begin{equation}
+W_k^{\text{global}} = \frac{1}{|\mathcal{C}_k|} \sum_{i \in \mathcal{C}_k} w_i
+\end{equation}
+
+Each agent $i \in \mathcal{C}_k$ downloads and adopts the aggregated weights:
+\begin{equation}
+w_i \leftarrow W_k^{\text{global}}
+\end{equation}
+
+This design achieves several benefits:
+
+\begin{itemize}
+    \item \textbf{Reduced Negative Transfer}: Agents are averaged only with other agents having similar weights, reducing the pull from incompatible traffic scenarios.
+    \item \textbf{Positive Transfer}: Agents benefit from collaborative learning with similar intersections, potentially discovering better strategies faster.
+    \item \textbf{Stability}: The use of clustering makes federated learning more robust to heterogeneous local environments.
+    \item \textbf{Interpretability}: Clusters naturally correspond to different traffic regimes, providing insight into the network structure.
+\end{itemize}
+
+\subsection{Frequency and Scheduling}
+
+Clustering and aggregation occur periodically, typically every $R$ local training episodes or rounds. More frequent aggregation increases communication overhead but allows faster knowledge transfer. Less frequent aggregation reduces communication but may allow policies to drift apart. The optimal frequency is a system-design parameter.
+
+\section{Computer Vision for Traffic State Estimation}
+
+\subsection{Motivation for Vision-Based Sensing}
+
+During hardware-in-the-loop demonstration on a Raspberry Pi, the system must estimate traffic state from camera video without access to a traffic simulation engine. Vision-based sensing enables the system to measure:
+
+\begin{itemize}
+    \item \textbf{Vehicle Detection}: Identifying and locating vehicles in the field of view using object detection.
+    \item \textbf{Speed Estimation}: Tracking vehicles across frames to infer their instantaneous speed.
+    \item \textbf{Lane-Level Occupancy}: Counting vehicles in designated lane regions of interest (ROIs).
+    \item \textbf{Waiting Time}: Identifying stationary vehicles and accumulating their waiting duration.
+\end{itemize}
+
+This creates a complete observation pipeline that produces the same state vector $(q_l, w_l, \phi)$ needed by the learned policy, enabling seamless transition from simulation to real deployment.
+
+\subsection{Architecture Overview}
+
+YOLO (You Only Look Once) is a single-stage object detector that predicts bounding boxes and class labels directly from image features in a single forward pass. YOLOv11 is a recent variant combining improvements from prior YOLO versions with modern deep learning practices.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1\textwidth]{img/yolo11_architecture.jpg}
+\caption{Ultralytics YOLOv11 architecture.}
+\label{fig:yolo11_architecture}
+\end{figure}
+
+\subsection{Backbone Network}
+
+The backbone is a convolutional neural network (CNN) that takes an input image and progressively extracts hierarchical features at multiple scales (e.g., 8$\times$, 16$\times$, 32$\times$ downsampling). Shallow layers capture low-level features (edges, colors), while deep layers extract semantic features (object parts, object categories). YOLOv11's backbone uses efficient architectures that balance accuracy and computational cost, critical for deployment on edge devices.
+
+\subsection{Neck and Feature Aggregation}
+
+The neck (also called the FPN or Feature Pyramid Network) takes features from multiple backbone layers and aggregates them using upsampling and concatenation. This enables the detector to recognize objects at multiple scales: small vehicles far away, large vehicles nearby, etc. The neck then produces feature maps at standardized resolutions for the prediction head.
+
+\subsection{Detection Head}
+
+The head performs dense predictions on the aggregated feature maps. For each spatial location in the feature map, the head predicts:
+
+\begin{itemize}
+    \item \textbf{Bounding Box}: The $(x, y, w, h)$ coordinates of any vehicle present in that cell.
+    \item \textbf{Objectness Score}: The confidence that an object (vehicle) is present in that cell.
+    \item \textbf{Class Probabilities}: The probability that the detected object belongs to each class (e.g., car, truck, motorcycle).
+\end{itemize}
+
+The predictions are made densely across the image, enabling multiple vehicles to be detected. A non-maximum suppression (NMS) post-processing step removes duplicate predictions for the same vehicle.
+
+\subsection{Advantages for Traffic Monitoring}
+
+\begin{enumerate}
+    \item \textbf{Real-Time Performance}: YOLOv11 runs at high frame rates (30+ fps) on Raspberry Pi, meeting real-time requirements.
+    \item \textbf{Compact Model}: Nano and Small variants have low memory footprint and inference latency, suitable for edge devices.
+    \item \textbf{Accuracy}: Trained on large datasets (e.g., COCO), YOLO generalizes well to urban traffic scenes with minimal fine-tuning.
+    \item \textbf{Multi-Scale Detection}: Can detect vehicles at various distances from the camera.
+\end{enumerate}
+
+\subsection{Custom Training for Domain Specificity}
+
+Although YOLO is pre-trained on generic objects, fine-tuning on a custom traffic dataset improves accuracy for the specific intersection geometry, lighting conditions, and vehicle types. The training process involves:
+
+\begin{enumerate}
+    \item \textbf{Data Collection}: Recording video from the camera mounted above the intersection.
+    \item \textbf{Annotation}: Manually labeling vehicles in a sample of frames with bounding boxes.
+    \item \textbf{Training}: Fine-tuning the YOLO network on the annotated data using standard optimization (e.g., SGD or Adam).
+    \item \textbf{Evaluation}: Testing on a held-out validation set to assess accuracy and latency.
+\end{enumerate}
+
+\section{Vehicle Tracking and Speed Estimation}
+
+Once vehicles are detected, the system must track them across frames and estimate their speeds.
+
+\subsection{Frame-to-Frame Tracking}
+
+Simple tracking can use the Hungarian algorithm or centroid matching: detections in the current frame are associated with tracked objects in the previous frame by minimizing the distance between detection bounding boxes and predicted object positions. Each vehicle maintains a unique ID across frames.
+
+\subsection{Speed Estimation from Optical Flow}
+
+Estimating vehicle speed from a static camera requires two pieces of information:
+
+\begin{itemize}
+    \item \textbf{Pixel Displacement}: How many pixels a vehicle moves between frames.
+    \item \textbf{Pixel-to-Meter Conversion}: The real-world distance represented by one pixel (camera calibration).
+\end{itemize}
+
+The pixel displacement is obtained by tracking: comparing the position of a vehicle's bounding box center in consecutive frames. The pixel-to-meter conversion depends on the camera's intrinsic parameters (focal length, principal point) and extrinsic pose (height, angle) relative to the road. Once calibrated, the speed in m/s is:
+
+\begin{equation}
+v_{\text{vehicle}} = \frac{\Delta x_{\text{pixels}} \cdot \text{px\_per\_meter} \cdot \text{fps}}{1}
+\end{equation}
+
+where $\text{fps}$ is the video frame rate (e.g., 30 frames/second), and $\text{px\_per\_meter}$ is the pre-calibrated conversion factor.
+
+\subsection{Speed Thresholding and Waiting Time}
+
+A vehicle is considered "waiting" if its speed is below a threshold (e.g., 3 km/h) and its position is within a lane ROI. The waiting time for a vehicle is the total duration it has spent below this speed threshold. This is accumulated frame-by-frame: if a vehicle is waiting in frame $t-1$ and also waiting in frame $t$, its waiting time increases by $1/\text{fps}$ seconds.
+
+\section{State Observation and Control in Hardware Demonstration}
+
+\subsection{Complete Hardware Pipeline}
+
+During hardware-in-the-loop (HIL) demonstration, the system operates in a closed loop:
+
+\begin{enumerate}
+    \item \textbf{Camera Capture}: A camera mounted above the intersection records video at a fixed frame rate (e.g., 30 fps).
+    \item \textbf{Vehicle Detection}: Each frame is processed by YOLOv11 to detect vehicles and output bounding boxes.
+    \item \textbf{Vehicle Tracking}: Detections are associated with tracked vehicles (maintaining unique IDs across frames).
+    \item \textbf{Speed Estimation}: The tracked position of each vehicle across frames is converted to speed using camera calibration.
+    \item \textbf{Lane Occupancy}: Vehicles are classified into lanes based on which lane ROI they fall into. Queue length $q_l$ for lane $l$ is the count of vehicles in that ROI.
+    \item \textbf{Waiting Time}: Vehicles with speed below a threshold are marked as waiting. The waiting time $w_l$ for lane $l$ is the average or sum of waiting durations of vehicles in that lane.
+    \item \textbf{Traffic State Vector}: The vector $(q_1, \ldots, q_L, w_1, \ldots, w_L, \phi)$ is constructed and normalized.
+    \item \textbf{Policy Inference}: The learned policy network is executed with the normalized state vector, producing a probability distribution over actions.
+    \item \textbf{Action Selection}: An action is sampled (or deterministically selected) from the policy distribution.
+    \item \textbf{Signal Control}: The signal hardware (e.g., ESP32 microcontroller) is instructed to apply the selected phase and duration, managing green/yellow/red lights.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.7\textwidth]{img/hardware_demonstration.png}
+\caption{Hardware-in-the-loop pipeline.}
+\label{fig:hardware_demo}
+\end{figure}
+
+\subsection{Frame Rate Synchronization}
+
+The system runs asynchronously: video frames are captured at the camera's frame rate (e.g., 30 fps), detections are computed, and the policy is queried often. However, traffic signal changes are much slower. The Raspberry Pi may downsample the decision frequency (e.g., make a decision every 0.5 seconds using averaged observations from several frames) to reduce latency and focus computation on stable decisions.
+
+\section{Simulation Environment}
+
+\subsection{Role of Simulation in Training}
+
+Training and evaluation are conducted in a high-fidelity traffic simulation environment. Simulation offers several critical advantages:
+
+\begin{itemize}
+    \item \textbf{Safety}: No risk of disrupting real traffic while experimenting with new control policies.
+    \item \textbf{Repeatability}: The same traffic demand pattern can be replayed to compare different policies fairly.
+    \item \textbf{Scalability}: Training can be accelerated by running multiple agents in parallel or stepping the simulator in fast-forward.
+    \item \textbf{Ground Truth}: Exact measurements of queue length, waiting time, and travel time are available without sensing errors.
+    \item \textbf{Diversity}: Multiple demand patterns and network topologies can be tested exhaustively.
+\end{itemize}
+
+\subsection{Microscopic Traffic Simulation}
+
+The simulator implements a microscopic model in which each vehicle is simulated individually with a car-following model (e.g., Intelligent Driver Model / IDM). Vehicles navigate through a network of lanes and intersections. At each junction, vehicles are governed by traffic signal phases: if the signal is green on the vehicle's lane, the vehicle can proceed through; otherwise, it must stop.
+
+\subsection{Traffic Signal Control Interface}
+
+The simulator exposes an interface through which agents control traffic signals. Each time step (e.g., every 1 second of simulated time), agents receive:
+
+\begin{itemize}
+    \item Queue length on each incoming lane $q_{i,l}$.
+    \item Waiting time on each incoming lane $w_{i,l}$.
+    \item Current active signal phase $\phi_i$.
+\end{itemize}
+
+Agents output a decision (resulting phase and duration). The simulator then implements the transition: yellow lights for a mandatory safety period (e.g., 3 seconds), then green lights on the selected phase for the specified duration, followed by the next agent decision.
+
+\subsection{Episode Structure}
+
+Training proceeds in episodes. Each episode corresponds to a fixed amount of simulated time (e.g., 1 hour of traffic). At the start of each episode, vehicles are generated according to a demand pattern. During each episode, the agent makes decisions, receives observations and rewards, and accumulates experience. At episode end, metrics (average waiting time, total vehicles served, etc.) are computed.
+
+Across multiple episodes, the agent incrementally improves its policy, learning which phases and durations are effective under different traffic conditions.
+
+\section{Baseline and Comparison Methods}
+
+\subsection{Fixed-Time Control}
+
+The simplest baseline is fixed-time signal control, in which each signal phase has a predetermined duration set by a domain expert or heuristic. For example, phases might always be green for 30 seconds. This baseline is:
+
+\begin{itemize}
+    \item \textbf{Static}: Does not adapt to real-time traffic conditions.
+    \item \textbf{Parameter-Tuned}: The fixed durations are usually tuned by hand based on observed traffic patterns.
+    \item \textbf{Robust}: Guaranteed never to deviate from the plan.
+    \item \textbf{Suboptimal}: Often inefficient under diverse demand patterns.
+\end{itemize}
+
+Fixed-time control serves as a practical lower bound for comparison.
+
+\subsection{Why Comparisons Matter}
+
+Comparing learned policies against baselines demonstrates that the RL approach provides real benefits. Metrics should be measured consistently across all methods on the same simulated scenarios, using the same evaluation methodology.
+
+\section{Evaluation Metrics}
+
+\subsection{Traffic Efficiency Metrics}
+
+Several metrics quantify the quality of traffic control:
+
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{Average Waiting Time (AWT)}: The mean duration between vehicle arrival at a junction and clearance (entering the downstream link). Lower is better. Measured in seconds.
+    
+    \item \textbf{Average Queue Length (AQL)}: The mean number of vehicles waiting at a junction across the evaluation period. Lower is better. Measured in vehicles.
+    
+    \item \textbf{Total Delay}: The sum of all vehicle delays (wait time above free-flow travel time for the distance traveled). Lower is better. Often normalized by the number of vehicles.
+    
+    \item \textbf{Throughput}: The number of vehicles that successfully exit the network per unit time. Higher is better. Measured in vehicles/hour.
+    
+    \item \textbf{Travel Time}: Mean time from entry to exit of the network. Lower is better. Accounts for both time spent at junctions (queueing) and time spent traveling on links.
+\end{enumerate}
+
+\subsection{Training Convergence Metrics}
+
+During training, we also track convergence:
+
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{Episode Reward}: The cumulative discounted reward achieved by an agent in an episode. Should increase (become less negative) as the policy improves.
+    
+    \item \textbf{Policy Loss} ($L_{\text{CLIP}}$): The clipped surrogate loss during PPO training. Tracks stability and whether the policy is still learning or has plateaued.
+    
+    \item \textbf{Value Function Loss}: Mean squared error between predicted and actual returns. Indicates whether the critic is well-calibrated.
+    
+    \item \textbf{Entropy}: The entropy of the policy distribution. High entropy means the policy is exploratory; low entropy means it is committed to specific actions. Some entropy decay over training is expected.
+\end{enumerate}
+
+\subsection{Federated Learning Metrics}
+
+When using federated learning, additional metrics track collaboration:
+
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{Weight Distance Between Clusters}: Average distance (e.g., $L_2$ norm) between agent weights within a cluster. Decreases as aggregation brings agents together.
+    
+    \item \textbf{Cluster Membership Stability}: How much the cluster assignments change across rounds. Stable clusters indicate that agents naturally group themselves.
+\end{enumerate}
+
+\subsection{Hardware Deployment Metrics}
+
+During hardware demonstration, additional metrics measure real-time capability:
+
+\begin{enumerate}[label=(\roman*)]
+    \item \textbf{Inference Latency}: Time from receiving an observation to producing an action. Should be <100 ms for real-time control.
+    
+    \item \textbf{Detection Accuracy}: Precision and recall of vehicle detection by YOLOv11. Critical for accurate state estimation.
+    
+    \item \textbf{Memory Footprint}: Size of the policy network and YOLO model in memory. Must fit on the edge device (Raspberry Pi has ~1 GB for user code).
+    
+    \item \textbf{Power Consumption}: Energy used by the Pi and sensing hardware, relevant for battery-powered deployments.
+\end{enumerate}
+
+\section{Training and Inference Workflows}
+
+\subsection{Training Workflow}
+
+Training proceeds in global communication rounds on the federated server. In each round:
+
+\begin{figure}[H]
+\centering
+\includegraphics[
+  height=0.9\textheight,
+  width=\textwidth,
+  keepaspectratio
+]{img/train.png}
+\caption{Federated training workflow.}
+\label{fig:training}
+\end{figure}
+
+\begin{enumerate}
+    \item \textbf{Local Training Phase}: Each agent runs locally for a fixed number of environment steps (e.g., 1000 steps). During this phase:
+    \begin{itemize}
+        \item Agent collects experience in the simulation environment using its current policy.
+        \item Agent performs multiple epochs of PPO training on the collected data.
+        \item Agent logs local metrics (episode reward, policy loss, etc.).
+    \end{itemize}
+    
+    \item \textbf{Weight Upload}: After local training, agents upload their trained policy weights to the server.
+    
+    \item \textbf{Clustering}: The server clusters agents based on weight similarity using K-Means, partitioning agents into $K$ clusters.
+    
+    \item \textbf{Aggregation}: For each cluster, the server computes the average weights: $W_k = \frac{1}{|\mathcal{C}_k|} \sum_{i \in \mathcal{C}_k} w_i$.
+    
+    \item \textbf{Weight Distribution}: Each agent downloads and installs the aggregated weights from its assigned cluster.
+\end{enumerate}
+
+This cycle repeats for a fixed number of global rounds (e.g., 200 rounds). Over time, agents in the same cluster converge toward a shared policy, while agents in different clusters may diverge (if their problems are fundamentally different).
+
+\subsection{Inference Workflow}
+
+After training, the learned policy weights are deployed for inference. The inference workflow is simpler:
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.66\textwidth]{img/inference.png}
+\caption{Inference workflow.}
+\label{fig:inference}
+\end{figure}
+
+\begin{enumerate}
+    \item \textbf{Load Weights}: The agent loads its final trained policy weights (from the last training round).
+    
+    \item \textbf{Observe State}: The agent observes the current traffic state (either from SUMO in simulation or from the YOLO pipeline in hardware).
+    
+    \item \textbf{Forward Pass}: The neural network creates the policy distribution $\pi(a \mid s)$ for the given state.
+    
+    \item \textbf{Action Selection}: An action is selected:
+    \begin{itemize}
+        \item \textit{Stochastic}: Sample from $\pi(a \mid s)$ (exploration).
+        \item \textit{Deterministic}: Select $a^* = \arg\max_a \pi(a \mid s)$ (exploitation).
+    \end{itemize}
+    
+    \item \textbf{Execute Action}: The signal hardware applies the selected phase and duration.
+    
+    \item \textbf{Repeat}: After the phase duration elapses, the next observation is collected and the cycle continues.
+\end{enumerate}
+
+Unlike training, inference collects no experience and makes no policy updates—it only performs prediction. This allows inference to run on minimal hardware (e.g., Raspberry Pi) without a full RL training stack.

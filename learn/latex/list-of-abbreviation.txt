@@ -1,0 +1,55 @@
+\chapter*{List of Abbreviations}
+\addcontentsline{toc}{chapter}{LIST OF ABBREVIATIONS}
+
+\begin{tabular}{@{}>{\bfseries}p{0.22\textwidth} p{0.74\textwidth}@{}}
+A2C & Advantage Actor Critic \\
+API & Application Programming Interface \\
+ATSC & Adaptive Traffic Signal Control \\
+CF-MADRL & Clustered Federated Multi-Agent Deep Reinforcement Learning \\
+CNN & Convolutional Neural Network \\
+CPU & Central Processing Unit \\
+CSV & Comma Separated Values \\
+DQN & Deep Q-Network \\
+DFL & Distribution Focal Loss \\
+DRL & Deep Reinforcement Learning \\
+ESP32 & Espressif Systems 32-bit Microcontroller \\
+FedAvg & Federated Averaging \\
+FL & Federated Learning \\
+FPS & Frames Per Second \\
+GAE & Generalized Advantage Estimation \\
+GAT & Graph Attention Network \\
+GMC & Global Motion Compensation \\
+GPU & Graphics Processing Unit \\
+GUI & Graphical User Interface \\
+HIL & Hardware-in-the-Loop \\
+IID & Independent and Identically Distributed \\
+IoT & Internet of Things \\
+IoU & Intersection over Union \\
+\end{tabular}
+
+\vspace{1em}
+
+\begin{tabular}{@{}>{\bfseries}p{0.22\textwidth} p{0.74\textwidth}@{}}
+IR & Infrared \\
+JSON & JavaScript Object Notation \\
+LED & Light Emitting Diode \\
+MADRL & Multi-Agent Deep Reinforcement Learning \\
+mAP & Mean Average Precision \\
+MDP & Markov Decision Process \\
+OSM & OpenStreetMap \\
+PPO & Proximal Policy Optimization \\
+RAM & Random Access Memory \\
+ReLU & Rectified Linear Unit \\
+RGB & Red Green Blue \\
+RL & Reinforcement Learning \\
+RLlib & Reinforcement Learning Library \\
+SCATS & Sydney Coordinated Adaptive Traffic System \\
+SCOOT & Split Cycle Offset Optimization Technique \\
+SUMO & Simulation of Urban Mobility \\
+TraCI & Traffic Control Interface \\
+XML & Extensible Markup Language \\
+YAML & YAML Ain't Markup Language \\
+YOLO & You Only Look Once \\
+\end{tabular}
+
+\clearpage

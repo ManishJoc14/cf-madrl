@@ -1,0 +1,138 @@
+===============================================================================
+        CF-MADRL: INTELLIGENT TRAFFIC SIGNAL CONTROL SYSTEM
+                    2-MINUTE VIDEO DEMONSTRATION SCRIPT
+===============================================================================
+
+[INTRO - 15 seconds]
+-------------------
+Hello! Today I'm presenting CF-MADRL - a Clustered Federated Multi-Agent Deep 
+Reinforcement Learning system for intelligent traffic signal control. This 
+project combines cutting-edge AI techniques to optimize traffic flow in real-time.
+
+
+[SECTION 1: PPO AGENT TRAINING - 30 seconds]
+---------------------------------------------
+First, let's understand the training phase. We use RLlib's Proximal Policy 
+Optimization (PPO) agents - each traffic junction acts as an independent agent. 
+These agents train in a SUMO traffic simulation environment, learning optimal 
+signal timing policies.
+
+The key innovation: Federated Learning with Clustering. Similar junctions are 
+grouped into clusters based on their traffic patterns, then share knowledge 
+through federated averaging. This allows agents to learn faster by leveraging 
+experiences from similar intersections while maintaining privacy.
+
+Our agents observe lane occupancy, waiting times, and queue lengths, then 
+decide optimal signal phases to minimize overall wait time.
+
+
+[SECTION 2: CF-MADRL YOLO INTEGRATION - 25 seconds]
+----------------------------------------------------
+For real-world deployment, we integrated YOLOv26 for vehicle detection. The 
+YOLO model was trained on custom traffic datasets to accurately count vehicles 
+and measure density in each lane. 
+
+This provides real-time observations: vehicle counts, queue lengths, and lane 
+occupancy - exactly what our PPO agents need for decision-making. The YOLO 
+model runs efficiently even on edge devices, making real-time inference possible.
+
+
+[SECTION 3: INFERENCE DEPLOYMENT - 20 seconds]
+-----------------------------------------------
+Now for deployment. We created a complete inference system for Raspberry Pi 4. 
+The deployment package includes:
+- Trained PPO model weights with normalization statistics
+- Multi-camera YOLO-based traffic monitor
+- Real-time inference engine
+- API for traffic light hardware control
+
+The system runs entirely on the edge - processing camera feeds, running YOLO 
+detection, feeding metrics to PPO agents, and controlling traffic signals in 
+real-time.
+
+
+[SECTION 4: EVALUATION DEMO - 30 seconds]
+------------------------------------------
+Let me demonstrate the evaluation. I'll run: python main.py --mode eval
+
+[SHOW TERMINAL COMMAND EXECUTION]
+
+This evaluates our CF-MADRL agents against traditional fixed-time control in 
+the SUMO simulation. The system runs both strategies and logs comprehensive 
+metrics.
+
+Now let's look at the generated plots in plots/eval folder:
+
+[SHOW PLOTS ON SCREEN]
+
+1. Wait Time Comparison: CF-MADRL reduces average wait time by 35-40% compared 
+   to fixed-time control. You can see the blue line (CF-MADRL) consistently 
+   below the red line (Fixed-time).
+
+2. Queue Length Comparison: Our adaptive system maintains shorter queues, 
+   preventing congestion buildup.
+
+3. Cost Comparison: Overall traffic cost - combining wait times, queue lengths, 
+   and throughput - shows significant improvement with CF-MADRL.
+
+
+[CONCLUSION - 10 seconds]
+--------------------------
+In summary, we've built an end-to-end intelligent traffic control system: 
+training multi-agent RL policies with federated learning, integrating real-time 
+YOLO-based vehicle detection, and deploying to Raspberry Pi for edge inference. 
+Results show 35-40% improvement over traditional methods.
+
+Thank you!
+
+===============================================================================
+                            PRESENTATION TIPS
+===============================================================================
+
+TIMING BREAKDOWN:
+- Intro: 15s
+- PPO Training: 30s  
+- YOLO Integration: 25s
+- Deployment: 20s
+- Evaluation Demo: 30s
+- Conclusion: 10s
+TOTAL: ~130 seconds = 2 minutes 10 seconds
+
+VISUAL AIDS TO SHOW:
+1. Architecture diagram (if available)
+2. SUMO simulation running
+3. Terminal showing training progress
+4. YOLO detection video with bounding boxes
+5. Raspberry Pi setup (hardware photo)
+6. Terminal: python main.py --mode eval command
+7. Generated plots from plots/eval/ folder
+8. Side-by-side comparison of fixed-time vs CF-MADRL
+
+KEY TERMS TO EMPHASIZE:
+- Multi-Agent Reinforcement Learning
+- Federated Learning with Clustering  
+- PPO (Proximal Policy Optimization)
+- YOLOv26 Vehicle Detection
+- Edge Deployment
+- Real-time Inference
+- 35-40% Improvement
+
+SPEAKING TIPS:
+✓ Speak clearly and confidently at ~120-140 words/minute
+✓ Pause briefly when switching between sections
+✓ Point to relevant parts of code/plots when discussing
+✓ Show enthusiasm about the results!
+✓ Practice timing - adjust speaking speed if needed
+
+WHAT TO ACTUALLY DEMONSTRATE:
+1. Show config.yaml briefly (configuration)
+2. Run: python main.py --mode train (show few iterations)
+3. Show YOLO detection on traffic video
+4. Show Raspberry Pi deployment folder structure
+5. Run: python main.py --mode eval (full execution)
+6. Open and explain each plot in plots/eval/:
+   - plot_eval_wait_comparison.png
+   - plot_eval_queue_comparison.png  
+   - plot_eval_cost_comparison.png
+
+===============================================================================

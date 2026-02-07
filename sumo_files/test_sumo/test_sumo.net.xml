@@ -320,28 +320,52 @@
         <lane id="E9_0" index="0" speed="13.89" length="66.44" shape="68.15,-89.38 134.59,-88.96"/>
     </edge>
 
-    <tlLogic id="J1" type="static" programID="0" offset="0">
-        <phase duration="42" state="GGGgrrrGGGgrrr"/>
+    <tlLogic id="J1" type="static" programID="fixed" offset="0">
+        <phase duration="60" state="GGGgrrrGGGgrrr"/>
         <phase duration="3"  state="yyyyrrryyyyrrr"/>
-        <phase duration="42" state="rrrrGGgrrrrGGg"/>
+        <phase duration="60" state="rrrrGGgrrrrGGg"/>
         <phase duration="3"  state="rrrryyyrrrryyy"/>
     </tlLogic>
-    <tlLogic id="J2" type="static" programID="0" offset="0">
-        <phase duration="42" state="GGGgrrrGGGgrrr"/>
+    <tlLogic id="J1" type="static" programID="madrl" offset="0">
+        <phase duration="40" state="GGGgrrrGGGgrrr"/>
         <phase duration="3"  state="yyyyrrryyyyrrr"/>
-        <phase duration="42" state="rrrrGGgrrrrGGg"/>
+        <phase duration="40" state="rrrrGGgrrrrGGg"/>
         <phase duration="3"  state="rrrryyyrrrryyy"/>
     </tlLogic>
-    <tlLogic id="J5" type="static" programID="0" offset="0">
-        <phase duration="42" state="GGgrrrGGgrrr"/>
+    <tlLogic id="J2" type="static" programID="fixed" offset="0">
+        <phase duration="60" state="GGGgrrrGGGgrrr"/>
+        <phase duration="3"  state="yyyyrrryyyyrrr"/>
+        <phase duration="60" state="rrrrGGgrrrrGGg"/>
+        <phase duration="3"  state="rrrryyyrrrryyy"/>
+    </tlLogic>
+    <tlLogic id="J2" type="static" programID="madrl" offset="0">
+        <phase duration="40" state="GGGgrrrGGGgrrr"/>
+        <phase duration="3"  state="yyyyrrryyyyrrr"/>
+        <phase duration="40" state="rrrrGGgrrrrGGg"/>
+        <phase duration="3"  state="rrrryyyrrrryyy"/>
+    </tlLogic>
+    <tlLogic id="J5" type="static" programID="fixed" offset="0">
+        <phase duration="60" state="GGgrrrGGgrrr"/>
         <phase duration="3"  state="yyyrrryyyrrr"/>
-        <phase duration="42" state="rrrGGgrrrGGg"/>
+        <phase duration="60" state="rrrGGgrrrGGg"/>
         <phase duration="3"  state="rrryyyrrryyy"/>
     </tlLogic>
-    <tlLogic id="J7" type="static" programID="0" offset="0">
-        <phase duration="42" state="GGgrrrGGgrrr"/>
+    <tlLogic id="J5" type="static" programID="madrl" offset="0">
+        <phase duration="40" state="GGgrrrGGgrrr"/>
         <phase duration="3"  state="yyyrrryyyrrr"/>
-        <phase duration="42" state="rrrGGgrrrGGg"/>
+        <phase duration="40" state="rrrGGgrrrGGg"/>
+        <phase duration="3"  state="rrryyyrrryyy"/>
+    </tlLogic>
+    <tlLogic id="J7" type="static" programID="fixed" offset="0">
+        <phase duration="60" state="GGgrrrGGgrrr"/>
+        <phase duration="3"  state="yyyrrryyyrrr"/>
+        <phase duration="60" state="rrrGGgrrrGGg"/>
+        <phase duration="3"  state="rrryyyrrryyy"/>
+    </tlLogic>
+    <tlLogic id="J7" type="static" programID="madrl" offset="0">
+        <phase duration="40" state="GGgrrrGGgrrr"/>
+        <phase duration="3"  state="yyyrrryyyrrr"/>
+        <phase duration="40" state="rrrGGgrrrGGg"/>
         <phase duration="3"  state="rrryyyrrryyy"/>
     </tlLogic>
 

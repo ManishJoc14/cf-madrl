@@ -1,6 +1,6 @@
 sumo:
   config_file: sumo_files/test_sumo/test_sumo.sumocfg
-  step_length: 1.0
+  step_length: 1
   gui: false
   gridlock_detection_time: 300.0
 rl:
@@ -18,7 +18,7 @@ rl:
     fcnet_activation: relu
 traffic:
   yellow_time: 3 # seconds
-  green_time: 20 # seconds
+  green_time: 42 # seconds
   durations:
     min: 10
     max: 60
@@ -29,7 +29,7 @@ traffic:
     car: 1.0
     motorcycle: 1.0
 training:
-  federated_rounds: 200
+  federated_rounds: 70
   local_steps_per_round: 1000
   n_clusters: 2
   save_freq: 10
@@ -38,8 +38,9 @@ training:
     epochs: 20
     min_reward_delta: 0.05
 evaluation:
-  gui: false
+  gui: true
   steps: 10000
+  step_delay: 0  # Delay in milliseconds per simulation step (0 = fast, 100 = smooth, 500 = slow)
 system:
   server_host: localhost
   server_port: 12345

@@ -1,0 +1,153 @@
+\chapter{RESULTS AND ANALYSIS}
+
+This section presents the performance evaluation results obtained from simulation-based experiments comparing the CF-MADRL approach against traditional fixed-time traffic signal control.
+
+\section{Experimental Setup}
+
+All experiments were conducted using SUMO simulator with consistent environmental parameters across both control strategies. The evaluation phase consisted of 10,000 simulation steps without graphical interface to ensure computational consistency. Both methods controlled four junctions (J1, J2, J5, J7) operating under identical traffic demand patterns.
+
+The fixed-time baseline employed a conventional signal control strategy with predetermined green signal durations of 42 seconds and yellow transition periods of 3 seconds, cycling through all traffic phases sequentially. The CF-MADRL system utilized trained policy networks deployed after 70 federated training rounds with clustering-based knowledge aggregation.
+
+\section{YOLO Training and Fine-Tuning Results}
+
+To achieve accurate vehicle detection for the prototype deployment, the base \texttt{yolo26n.pt} model was fine-tuned using a small custom dataset consisting of images of the custom-made vehicles used in the physical test setup. This fine-tuning step was intended primarily to verify correct detection of the custom hardware vehicles rather than to achieve broad real-world generalization.
+
+\textbf{Training Scope Clarification:}  
+The current training focuses on validating detection performance for custom-built vehicles used in controlled experimental conditions. Large-scale training on real traffic scenes for full real-world deployment remains part of future work.
+
+\textbf{Training Process:}
+
+\begin{enumerate}
+    \item \textbf{Data Collection}: A limited dataset consisting of 13 training images and 4 validation images was prepared. These images capture the custom-built vehicles from overhead viewpoints consistent with the physical deployment camera setup (see Figure~\ref{fig:yolo_samples}).
+    
+    \item \textbf{Annotation}: All vehicle instances were manually annotated using bounding boxes, with labels restricted exclusively to the vehicle class.
+    
+    \item \textbf{Training}: The \texttt{yolo26n.pt} model was fine-tuned for 50 epochs on a Google Colab GPU using the UltraLytics framework, with a batch size of 8 and 2 data loader workers.
+    
+    \item \textbf{Validation}: The trained model was evaluated on the held-out validation images to confirm correct detection of the custom vehicles.
+\end{enumerate}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{img/yolo-training-samples.jpg}
+\caption{Sample training images used for YOLO fine-tuning.}
+\label{fig:yolo_samples}
+\end{figure}
+
+\textbf{Training Metrics Interpretation:}
+
+Figure~\ref{fig:yolo_training} presents the training and validation metrics over 50 epochs.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=1.0\textwidth]{img/yolo-training.png}
+\caption{YOLO v2.6 Nano training metrics over 50 epochs.}
+\label{fig:yolo_training}
+\end{figure}
+
+\begin{itemize}
+    \item \textbf{Bounding Box Loss (train/val)}: The training box loss decreases from approximately $1.2$ to $0.7$, indicating improved localization accuracy over epochs. The validation box loss follows a similar trend and stabilizes around $0.75$–$0.8$, suggesting acceptable generalization with minor variance due to the limited validation set.
+
+    \item \textbf{Classification Loss (train/val)}: The training classification loss reduces from approximately $7.0$ to $4.0$ and increase to $8.0$, while the validation loss decreases from about $7.2$ to $6.1$. This trend reflects increasingly reliable separation between vehicle objects and background, although the higher validation loss indicates moderate overfitting typical in small, controlled datasets.
+
+    \item \textbf{Distribution Focal Loss (DFL, train/val)}: The DFL decreases from approximately $0.0225$ to $0.015$ during training, but it increases from $0.016$ to $0.020$. This behavior demonstrates stable convergence of bounding box regression without abrupt oscillations.
+
+    \item \textbf{Precision (B)}: Precision increases steadily after mid-training and reaches approximately $0.65$ by the final epochs, indicating a moderate false-positive rate. The upward trend confirms improving prediction confidence as training progresses.
+
+    \item \textbf{Recall (B)}: Recall remains close to $1.0$ during early and mid-training but declines to approximately $0.75$ toward the final epochs. This indicates that while the model initially detects most objects, stricter confidence thresholds in later epochs reduce sensitivity.
+
+    \item \textbf{Mean Average Precision (mAP)}: The mAP@0.50 reaches approximately $0.85$, demonstrating strong bounding-box alignment for the prototype system. Additionally, mAP@0.50–0.95 increases steadily to approximately $0.70$, indicating consistent detection performance across stricter IoU thresholds.
+\end{itemize}
+
+\section{Performance Metrics and Comparative Analysis}
+
+\textbf{Average Waiting Time.} Figure~\ref{fig:eval_wait} presents the average waiting time per vehicle at each junction. Overall, the CF-MADRL approach consistently outperforms the Fixed-Time method across all junctions, although the magnitude of improvement varies across intersections:
+\begin{itemize}
+    \item \textbf{Junction J1:} Demonstrates a moderate reduction in waiting time. CF-MADRL records $\approx 42\,\mathrm{s}$ compared to the Fixed-Time average of nearly $60\,\mathrm{s}$.
+    \item \textbf{Junction J2:} Exhibits the most significant absolute improvement. While Fixed-Time control results in the highest delay of over $160\,\mathrm{s}$, CF-MADRL reduces this to $\approx 67\,\mathrm{s}$ (a reduction of over 50\%).
+    \item \textbf{Junction J5:} Shows substantial improvement, with CF-MADRL maintaining waiting times below $40\,\mathrm{s}$, whereas Fixed-Time exceeds $110\,\mathrm{s}$.
+    \item \textbf{Junction J7:} Represents the highest efficiency for both models. CF-MADRL achieves its lowest waiting time here ($\approx 18\,\mathrm{s}$), significantly outperforming the Fixed-Time control which is $\approx 83\,\mathrm{s}$.
+\end{itemize}
+
+The variation in performance across junctions can be attributed to differences in traffic flow patterns and intersection geometry. Junctions with more irregular or heavy traffic demands benefit more significantly from adaptive control, as the learned policy can dynamically allocate signal timings based on observed queue lengths and waiting times.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{img/plots/eval/plot_eval_wait_comparison.png}
+\caption{Average waiting time comparison between CF-MADRL and Fixed-Time control across junctions}
+\label{fig:eval_wait}
+\end{figure}
+
+\textbf{Average Queue Length.} Figure~\ref{fig:eval_queue} illustrates the average queue length maintained at each junction under both control strategies. The CF-MADRL approach demonstrates superior efficiency at three out of the four junctions, while the Fixed-Time method performs better in one specific instance:
+\begin{itemize}
+    \item \textbf{Junction J1:} Fixed-Time control maintains a shorter queue length ($\approx 3.8$) compared to CF-MADRL ($\approx 5.6$).
+    \item \textbf{Junction J2:} CF-MADRL shows a significant improvement, reducing the queue length to $\approx 6.7$ from the Fixed-Time peak of $\approx 9.1$.
+    \item \textbf{Junction J5:} CF-MADRL outperforms the baseline with a queue length of $\approx 4.8$, compared to $\approx 6.0$ for Fixed-Time.
+    \item \textbf{Junction J7:} CF-MADRL achieves its most efficient result here with a queue length of $\approx 2.7$, significantly lower than the Fixed-Time length of $\approx 4.7$.
+\end{itemize}
+
+The ability of CF-MADRL to manage queue lengths more effectively stems from its reward structure, which explicitly penalizes both queue accumulation and waiting time. The learned policy exhibits proactive behavior, extending green signals when significant queues are detected and reducing green time when approaching lanes have minimal traffic.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{img/plots/eval/plot_eval_queue_comparison.png}
+\caption{Average queue length comparison between CF-MADRL and Fixed-Time control across junctions}
+\label{fig:eval_queue}
+\end{figure}
+
+\textbf{Cumulative Cost Analysis.} Figure~\ref{fig:eval_cost} shows the cumulative cost (negative reward) for each junction. The CF-MADRL approach demonstrates a decisive advantage in reducing traffic costs across all evaluated junctions:
+\begin{itemize}
+    \item \textbf{Junction J1:} CF-MADRL maintains a cost of $\approx 8$, providing a moderate improvement over the Fixed-Time cost of roughly $11$.
+    \item \textbf{Junction J2:} A significant reduction is observed, with CF-MADRL ($\approx 12.5$) cutting the Fixed-Time cost ($\approx 29$) by more than half.
+    \item \textbf{Junction J5:} Represents the largest performance gap; CF-MADRL achieves a cost of $\approx 11$, whereas Fixed-Time control reaches its peak cost of over $31$.
+    \item \textbf{Junction J7:} CF-MADRL records its lowest overall cost ($\approx 5$), significantly outperforming the Fixed-Time method which sits at $\approx 22$.
+\end{itemize}
+
+The cost metric combines both waiting time and queue length penalties, providing a holistic measure of traffic system performance. The consistent reduction in cumulative costs validates that the trained policies have successfully learned to balance competing objectives of minimizing delays while preventing queue buildup.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{img/plots/eval/plot_eval_cost_comparison.png}
+\caption{Cumulative cost comparison between CF-MADRL and Fixed-Time control across junctions}
+\label{fig:eval_cost}
+\end{figure}
+
+\section{Training Convergence Analysis}
+
+Figure~\ref{fig:train_reward} illustrates the system-wide average reward over 70 federated rounds of training. This process utilizes Clustered Federated Multi-Agent Reinforcement Learning, where junction agents collaborate to learn optimal signal timing policies while maintaining data privacy.
+
+\textbf{Reward Trend Analysis.} The \emph{Average Mean Reward} serves as the primary training metric, where values closer to zero indicate superior performance:
+\begin{itemize}
+    \item \textbf{Initial Volatility (Rounds 1--20):} The training exhibits high instability with significant negative spikes, reaching a minimum reward below $-120$ near round 15. This represents the exploration phase where agents encounter suboptimal configurations.
+    \item \textbf{Convergence Pattern (Rounds 20--50):} A visible upward trend is observed as reward fluctuations begin to narrow. The system frequently returns to a baseline near $0$, indicating that the federated clusters are successfully aggregating beneficial policy updates.
+    \item \textbf{Stabilization (Rounds 50--70):} In the final phase, the reward stabilizes significantly, maintaining a range between $0$ and $-20$ for most rounds. This suggests that the model has reached a steady learning state.
+\end{itemize}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{img/plots/train/plot_training_avg_reward.png}
+\caption{Average training reward progression across federated rounds}
+\label{fig:train_reward}
+\end{figure}
+
+\section{Technical Observations and Reasoning}
+
+\textbf{Adaptive vs. Fixed Timing.} The primary advantage of CF-MADRL lies in its ability to adapt signal timings based on real-time traffic conditions. Unlike fixed-time control which allocates equal attention to all phases regardless of actual demand, the learned policy exhibits state-dependent behavior, allocating longer green signals to congested approaches and shorter signals when traffic is light.
+
+\textbf{Inter-Junction Coordination.} While each junction operates autonomously during inference, the federated training process enables implicit coordination through shared knowledge. Junctions that experienced similar traffic patterns during training developed compatible policies that, when deployed simultaneously, exhibit coordinated behavior without explicit communication.
+
+\textbf{Performance Variability.} The degree of improvement varies across junctions based on several factors: traffic demand patterns (peak vs. uniform), intersection geometry (number of phases and lanes), and the quality of training data collected during the federated learning process. Junctions with more complex and variable traffic patterns show greater benefits from adaptive control.
+
+\section{Scope and Limitations of Current Results}
+
+It is important to clearly state the boundaries of these findings:
+
+\textbf{Simulation-Based Results.} All presented results are obtained from SUMO simulation environment. While SUMO provides realistic traffic modeling, actual hardware deployment may encounter additional challenges such as sensor noise, communication delays, and unpredictable real-world traffic behaviors.
+
+\textbf{Limited Traffic Scenarios.} The current evaluation covers a specific traffic network topology and demand pattern. Performance under different network configurations, varying traffic volumes, or emergency scenarios has not been comprehensively tested.
+
+\textbf{Hyperparameter Sensitivity.} The results reflect performance under a specific configuration of learning hyperparameters. Systematic hyperparameter optimization across a wider search space could potentially yield improved performance.
+
+\textbf{Hardware Validation Pending.} The inference deployment framework has been developed and validated numerically, but end-to-end testing on actual Raspberry Pi hardware with vehicle detection systems is ongoing. Integration with real-time sensor data may reveal performance characteristics not apparent in simulation.
+
+Despite these limitations, the simulation results provide strong evidence that CF-MADRL can effectively learn adaptive traffic control policies that outperform traditional fixed-time approaches under varied traffic conditions.

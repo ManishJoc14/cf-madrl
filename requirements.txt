@@ -1,7 +1,7 @@
 sumo
 traci
 sumolib
-numpy
+numpy>=1.24.0
 scikit-learn
 matplotlib
 seaborn
@@ -10,4 +10,12 @@ rich
 ray[rllib]
 pettingzoo
 gymnasium
-torch
+torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
+ultralytics>=8.0.0
+opencv-python>=4.8.0
+pyyaml>=6.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.0.0
