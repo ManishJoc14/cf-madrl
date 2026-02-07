@@ -47,12 +47,26 @@ if __name__ == "__main__":
     config = load_config("config.yaml")
     Logger.header(f"CF-MADRL: Starting in '{args.mode}' mode")
 
+
+
+
     # 3. Execute chosen mode
     if args.mode == "train":
         Logger.section("Launching Federated Training")
+        
+        
+        # NOTE - CAll for training
         train_rllib(config, args_rounds=args.rounds)
+        
+        
+        
+        
+        
     else:
         Logger.section("Launching Evaluation Pipeline")
+        
+        # NOTE - CALL for evaluation
+        
         # Run fixed-time baseline
         fixed_metrics = run_fixed_time_baseline(config)
         

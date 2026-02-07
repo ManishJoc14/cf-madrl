@@ -86,6 +86,9 @@ class AgentManager:
         # Read RL configurations
         rl_cfg = config.get("rl", {})
 
+
+
+        # NOTE - Define RL configuration
         # PPOConfig
         self.algo_config = (
             PPOConfig()
@@ -150,6 +153,10 @@ class AgentManager:
 
         self.algo = None
 
+
+
+
+    # Build a algorithm from above configuration
     def build(self):
         """Build the RLlib algorithm."""
 
@@ -158,6 +165,9 @@ class AgentManager:
             self.algo = self.algo_config.build()
             Logger.success("RLlib algorithm initialized successfully.")
 
+
+
+    # Trains agents in our environment.
     def train(self, num_iterations: int = 1):
         """Train our agents."""
         if self.algo is None:
@@ -169,6 +179,9 @@ class AgentManager:
 
         return result
 
+
+
+    # Get weights for KMeans Clustering purpose
     def get_weights(self) -> Dict[str, Dict]:
         """Get weights of all agents."""
 
@@ -192,6 +205,9 @@ class AgentManager:
 
         return weights
 
+
+
+    # Update weights of agents from assigned cluster weights.
     def set_weights(self, weights: Dict[str, Dict]):
         """loads weights into the RLlib PPO agent's policy"""
 
@@ -210,6 +226,9 @@ class AgentManager:
                 }
                 policy.set_weights(w_torch)
 
+
+
+    # SAVE weights
     def save(self) -> str:
         """Save a checkpoint."""
 
@@ -222,6 +241,9 @@ class AgentManager:
 
         return checkpoint
 
+
+
+    # LOAD weights
     def load(self, checkpoint_path: str):
         """Restore agent state from saved checkpoint."""
 
@@ -230,6 +252,8 @@ class AgentManager:
 
         self.algo.restore(checkpoint_path)
 
+
+    # Get agents metrics 
     def get_metrics(self, result: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
         """Extract per-agent metrics from GlobalMetrics tracker or RLlib."""
 
@@ -259,6 +283,7 @@ class AgentManager:
             # }
 
         return metrics
+
 
     def close(self):
         """Cleanly stop the RL algorithm (releases memory, stops workers)."""

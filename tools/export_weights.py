@@ -4,7 +4,7 @@ import torch
 
 # Add project root to path to import project modules
 sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 
 from src.agent_manager import AgentManager

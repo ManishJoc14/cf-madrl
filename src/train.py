@@ -61,7 +61,13 @@ def train_rllib(config, args_rounds=None):
     if device_name == "cuda":
         Logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
 
-    # 1. Scan SUMO topology
+
+
+
+
+
+
+    # 1. NOTE - Scan SUMO topology
     Logger.section("Phase 1: Environment Discovery & Setup")
     Logger.narrative("Scanning SUMO network topology...")
     max_lanes, max_phases = scan_topology(config)
@@ -70,7 +76,11 @@ def train_rllib(config, args_rounds=None):
         f"Topology discovered: {max_lanes} lanes, {max_phases} phases across {len(junction_ids)} junctions."
     )
 
-    # 2. Initialize environment
+
+
+
+
+    # 2. NOTE -Initialize environment
     Logger.narrative("Initializing Multi-Agent SUMO Environment...")
     env = MultiAgentSumoEnv(
         {
@@ -81,7 +91,10 @@ def train_rllib(config, args_rounds=None):
         }
     )
 
-    # 3. Setup RLlib AgentManager
+
+
+
+    # 3. NOTE - Setup RLlib AgentManager
     checkpoint_dir = os.path.abspath(config["system"]["model_save_path"])
     is_resuming = os.path.exists(checkpoint_dir) and any(os.scandir(checkpoint_dir))
     Logger.narrative("Building RLlib PPO Algorithm Stack...")
@@ -98,13 +111,24 @@ def train_rllib(config, args_rounds=None):
     else:
         agent_manager.build()
 
-    # 4. Setup ClusteredFederatedServer
+
+
+
+
+
+    # 4. NOTE - Setup ClusteredFederatedServer
     server = ClusteredFederatedServer(n_clusters=n_clusters)
     Logger.success(
         f"System ready | Agents: {len(junction_ids)}, Clusters: {n_clusters}, Rounds: {rounds}"
     )
 
-    # 5. Training Loop
+
+
+
+
+
+
+    # 5. Training 
     log_file = os.path.join(
         config["system"].get("log_dir", "logs"), "training_logs.json"
     )
@@ -123,17 +147,27 @@ def train_rllib(config, args_rounds=None):
 
     Logger.info(f"Starting training from Round {start_round}")
 
+
+
+
+
+    # 5. NOTE - Training Loop
     for r in range(rounds):
         current_round = start_round + r
         Logger.round_banner(current_round, rounds + start_round - 1)
 
-        # a) Local Training
+
+
+        # a) NOTE - Local Training for certain local steps to gather experience from environment
         Logger.narrative(f"Phase 1: Local Training for {len(junction_ids)} agents...")
         batch_size = config["rl"].get("train_batch_size", 512)
         num_iterations = max(1, local_steps // batch_size)
         result = agent_manager.train(num_iterations=num_iterations)
+        
+        
 
-        # b) Metrics Logging
+
+        # b) NOTE - Metrics Logging 
         Logger.narrative("Phase 2: Logging metrics for each agent...")
         round_metrics = agent_manager.get_metrics(result)
         display_reward = 0.0
@@ -159,26 +193,41 @@ def train_rllib(config, args_rounds=None):
                 },
                 log_file,
             )
+            
+            
+            
 
-        # c) Clustering
+
+        # c) NOTE - Clustering
         Logger.narrative("Phase 3: Clustering agents based on weights...")
         agent_weights = agent_manager.get_weights()
         server.cluster_agents(agent_weights)
+        
+        
+        
 
-        # d) Federated Aggregation
+
+        # d) NOTE - Federated Aggregation
         Logger.narrative("Phase 4: Aggregating weights within clusters...")
         cluster_weights = server.aggregate(agent_weights)
 
-        # e) Redistribute models
+
+
+
+
+        # e) NOTE - Redistribute models
         Logger.narrative("Phase 5: Updating agents with cluster-aggregated weights...")
         for aid, weights in cluster_weights.items():
             agent_manager.set_weights({aid: weights})
+            
 
         Logger.success(
             f"Round {current_round}/{rounds} complete | Avg Reward: {display_reward:7.2f}"
         )
 
-        # Save checkpoint periodically
+
+
+        # NOTE - Save checkpoint periodically
         if current_round % save_freq == 0:
             agent_manager.save()
             # Save norm stats as well
@@ -187,7 +236,13 @@ def train_rllib(config, args_rounds=None):
             )
             env.save_norm_stats(norm_path)
 
-    # 6. Final save & cluster summary
+
+
+
+
+
+
+    # 6. NOTE - Training complete
     final_checkpoint = agent_manager.save()
     Logger.success(f"Training complete | Final checkpoint: {final_checkpoint}")
 
@@ -202,7 +257,10 @@ def train_rllib(config, args_rounds=None):
             print(f"  - {aid}")
     print("-" * 50)
 
-    # Generate Training Plots
+
+
+
+    # NOTE - Generate Training Plots
     Logger.narrative("Generating training plots...")
     try:
         # generate reward/queue/cluster plots
@@ -211,6 +269,10 @@ def train_rllib(config, args_rounds=None):
         Logger.success("Training plots generated in 'plots/' directory.")
     except Exception as e:
         Logger.warning(f"Failed to generate training plots: {e}")
+
+
+
+
 
     # Cleanup
     agent_manager.close()

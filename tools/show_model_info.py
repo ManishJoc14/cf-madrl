@@ -4,7 +4,7 @@ import torch
 
 # Add project root to path
 sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 
 from pi.utils.model import PPOPolicy

@@ -7,6 +7,7 @@ import torch
 
 class ClusteredFederatedServer:
 
+    # Initialize ClusteredFederatedServer
     def __init__(self, n_clusters: int = 2):
         # number of clusters to form
         self.n_clusters = n_clusters
@@ -28,6 +29,8 @@ class ClusteredFederatedServer:
         # }
         self.cluster_assignments = {}
 
+
+    # Cluster agents using agent weights
     def cluster_agents(self, agent_weights: Dict[str, Dict]):
         """
         Cluster agents based on similarity of their model weights.
@@ -104,18 +107,29 @@ class ClusteredFederatedServer:
         #   [0.11, 0.02, 0.85, 0.00, 0.00], of aid[2] i.e junction_3
         # ]
 
-        # apply KMeans clustering on model vectors
+
+
+
+
+
+        # NOTE - Apply KMeans clustering on model vectors
         kmeans = KMeans(n_clusters=self.n_clusters, random_state=42, n_init=10)
         labels = kmeans.fit_predict(X)
 
+
+
+
         # labels look like:
-        # [0, 1, 0]
+        # [0, 1, 0] 
 
         # initialize cluster containers
         self.clusters = {i: [] for i in range(self.n_clusters)}
         self.cluster_assignments = {}
 
-        # assign each agent to its cluster
+
+
+
+        # NOTE - assign each agent to its cluster
         for idx, label in enumerate(labels):
             aid = agent_ids[idx]
             self.clusters[label].append(aid)
@@ -129,6 +143,9 @@ class ClusteredFederatedServer:
 
         return self.clusters
 
+
+
+    # Aggregate weights within clusters
     def aggregate(
         self, agent_weights: Dict[str, Dict[str, Any]]
     ) -> Dict[str, Dict[str, Any]]:
@@ -165,7 +182,10 @@ class ClusteredFederatedServer:
                 for k in w:
                     agg_weights[k] += w[k]
 
-            # average
+            
+            
+            
+            # NOTE - Aggregation weights with in cluster
             N = len(agent_ids)
             for k in agg_weights:
                 agg_weights[k] /= N
@@ -173,7 +193,10 @@ class ClusteredFederatedServer:
             # save
             cluster_models[cid] = agg_weights
 
-        # broadcast aggregated model back to each agent
+        
+        
+        
+        # NOTE - Redistribution  of weights back to each agent
         result = {}
         # looks like:
         # {
