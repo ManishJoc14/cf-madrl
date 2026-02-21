@@ -1,0 +1,10 @@
+graph TD
+    A[Traffic Camera] --> B[YOLO Detection]
+    B --> C[Vehicle Data]
+    C --> D[RL Agent]
+    D --> E[Control Decision]
+    E --> F[Signal Controller]
+    D --> G[Federated Coordinator]
+    G --> H[Global Model]
+    H --> G
+    G --> D
