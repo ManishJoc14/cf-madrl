@@ -1,0 +1,274 @@
+═══════════════════════════════════════════════════════════════════
+CF-MADRL PI DEPLOYMENT - ALL COMMANDS & SETUP
+═══════════════════════════════════════════════════════════════════
+Updated for new folder structure with API server and modular design
+═══════════════════════════════════════════════════════════════════
+
+STEP 1: TRANSFER FILES TO RASPBERRY PI
+───────────────────────────────────────────────────────────────────
+
+# From your computer, copy deployment folder
+scp -r pi_deploy/ pi@192.168.1.XXX:~/cf-madrl/
+
+───────────────────────────────────────────────────────────────────
+STEP 2: SSH INTO RASPBERRY PI
+───────────────────────────────────────────────────────────────────
+
+ssh pi@192.168.1.XXX
+cd ~/cf-madrl/pi_deploy
+
+───────────────────────────────────────────────────────────────────
+STEP 3: INSTALL (ONE-TIME SETUP)
+───────────────────────────────────────────────────────────────────
+
+chmod +x scripts/setup.sh
+./scripts/setup.sh
+
+# Wait 5-10 minutes for installation
+# Installs: Python venv, torch, fastapi, uvicorn, ultralytics, opencv-python, etc.
+
+source .venv/bin/activate
+pip install -r requirements.txt
+
+───────────────────────────────────────────────────────────────────
+STEP 4: FIND ESP32 CAMERA IP (OPTIONAL)
+───────────────────────────────────────────────────────────────────
+
+source .venv/bin/activate
+python3 tools/find_esp32.py
+
+# Note the IP address shown
+
+───────────────────────────────────────────────────────────────────
+STEP 5: CONFIGURE
+───────────────────────────────────────────────────────────────────
+
+nano configs/yolo_config.yaml
+
+# Update camera URLs in lanes section:
+#   url: "http://192.168.1.100:81/stream"
+# To your ESP32 IP(s):
+#   url: "http://192.168.1.XXX:81/stream"
+
+# Save: Ctrl+O, Enter
+# Exit: Ctrl+X
+
+───────────────────────────────────────────────────────────────────
+STEP 6: RUN (MAIN ENTRY POINT)
+───────────────────────────────────────────────────────────────────
+
+source .venv/bin/activate
+
+# REAL MODE (with ESP32 camera feeds + API server)
+python3 main.py --mode real --port 8000
+
+# REAL MODE with video display
+python3 main.py --mode real --display --port 8000
+
+# TEST MODE (simulated scenarios for debugging)
+python3 main.py --mode test
+
+# Stop: Ctrl+C
+
+───────────────────────────────────────────────────────────────────
+API SERVER
+───────────────────────────────────────────────────────────────────
+
+# When running in real mode, FastAPI server starts on port 8000
+# Use this endpoint to get phase decisions:
+
+GET http://pi-ip:8000/get_phase
+Response:
+{
+  "phase": 0,
+  "duration": 30,
+  "yellow_required": false
+}
+
+# Health check:
+GET http://pi-ip:8000/health
+
+# Access API docs (interactive):
+http://pi-ip:8000/docs
+
+───────────────────────────────────────────────────────────────────
+DIRECTORYSTRUCTURE
+───────────────────────────────────────────────────────────────────
+
+pi_deploy/
+├── main.py                 # Main entry point (ALWAYS RUN THIS)
+├── requirements.txt        # All dependencies
+├── norm_stats.json         # Normalization statistics
+│
+├── src/                    # Core modules
+│   ├── engine.py          # PPO inference engine (loads model.pt)
+│   ├── api.py             # FastAPI server for ESP32
+│   ├── monitor.py         # Traffic monitoring system
+│   └── models.py          # Pydantic data models
+│
+├── configs/
+│   └── yolo_config.yaml   # Lane & YOLO settings (EDIT THIS)
+│
+├── models/
+│   ├── model.pt           # PPO policy model
+│   └── yolo/
+│       ├── best.pt        # YOLO detection model
+│       └── yolo26n.pt     # Fallback model
+│
+├── tools/
+│   └── find_esp32.py      # Find camera IP on network
+│
+├── tests/
+│   └── test_mode.py       # Test scenarios
+│
+├── utils/
+│   ├── inference_utils.py # Normalization utilities
+│   └── model.py           # Model loading
+│
+├── docs/
+│   ├── ESP32_INTEGRATION.md
+│   └── traffic_monitor.md
+│
+└── scripts/
+    ├── setup.sh           # Installation script
+    └── ALL_COMMANDS.txt   # This file
+
+───────────────────────────────────────────────────────────────────
+MONITOR & DEBUG
+───────────────────────────────────────────────────────────────────
+
+# Check if main.py is running
+ps aux | grep main.py
+
+# Run in background
+nohup python3 main.py --mode real > traffic.log 2>&1 &
+
+# View live logs
+tail -f traffic.log
+
+# Kill process
+pkill -f main.py
+
+# Check camera stream in browser
+http://192.168.1.XXX/  (your ESP32 IP)
+
+───────────────────────────────────────────────────────────────────
+AUTO-START ON BOOT (OPTIONAL)
+───────────────────────────────────────────────────────────────────
+
+crontab -e
+
+# Add this line at the end:
+@reboot cd /home/pi/cf-madrl/pi_deploy && /home/pi/cf-madrl/pi_deploy/.venv/bin/python3 main.py --mode real --port 8000
+
+# Save and exit
+
+───────────────────────────────────────────────────────────────────
+CONFIG.YAML QUICK REFERENCE
+───────────────────────────────────────────────────────────────────
+
+model:
+  path: "models/yolo/best.pt"         # Primary YOLO model
+  fallback_path: "models/yolo/yolo26n.pt"
+  conf_threshold: 0.3                 # Detection confidence
+  vehicle_classes: [1, 2, 3, 5, 7]   # COCO class IDs
+
+lanes:                                 # Define each lane
+  - id: "lane_north"
+    name: "North Lane"
+    url: "http://192.168.1.XXX:81/stream"  # UPDATE THIS
+    roi:
+      y_min: 0.4
+      y_max: 0.9
+
+output:
+  file: "traffic_metrics.json"
+  update_interval: 5                  # Update every 5 seconds
+  display: false                      # Set true to show video
+
+───────────────────────────────────────────────────────────────────
+TROUBLESHOOTING
+───────────────────────────────────────────────────────────────────
+
+Problem: "ModuleNotFoundError: No module named 'torch'"
+Solution: source .venv/bin/activate
+         pip install -r requirements.txt
+         restart_notebook_kernel
+
+Problem: Can't connect to ESP32
+Solution: python3 tools/find_esp32.py
+         Update configs/yolo_config.yaml with correct IP
+         Test: ping 192.168.1.XXX
+
+Problem: API server not starting
+Solution: Check port 8000 isn't in use: netstat -tlnp | grep 8000
+         Use different port: python3 main.py --mode real --port 8001
+
+Problem: Low frame rate
+Solution: Reduce output.update_interval in config.yaml
+         Decrease conf_threshold in YOLO config
+         Use simpler YOLO model (yolo26n.pt)
+
+Problem: Out of memory on Pi
+Solution: Run in test mode: python3 main.py --mode test
+         Reduce video resolution on ESP32
+
+Problem: Model not loading
+Solution: Check models/model.pt exists
+         Verify norm_stats.json is present
+         Check file permissions: ls -la models/
+
+───────────────────────────────────────────────────────────────────
+EXAMPLE: RUNNING ON STARTUP
+───────────────────────────────────────────────────────────────────
+
+# Create systemd service (recommended over crontab)
+sudo nano /etc/systemd/system/cf-madrl.service
+
+[Unit]
+Description=CF-MADRL Traffic Control
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/cf-madrl/pi_deploy
+ExecStart=/home/pi/cf-madrl/pi_deploy/.venv/bin/python3 main.py --mode real --port 8000
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
+# Enable and start
+sudo systemctl enable cf-madrl
+sudo systemctl start cf-madrl
+
+# Check status
+sudo systemctl status cf-madrl
+
+# View logs
+sudo journalctl -u cf-madrl -f
+
+───────────────────────────────────────────────────────────────────
+REQUIREMENTS.TXT CONTENTS
+───────────────────────────────────────────────────────────────────
+
+ultralytics>=8.0.0          # YOLO v8 object detection
+opencv-python>=4.8.0        # Image processing
+numpy>=1.24.0               # Numerical computing
+pyyaml>=6.0                 # Config file parsing
+torch>=2.0.0                # PyTorch for model inference
+torchvision>=0.15.0         # Vision models support
+torchaudio>=2.0.0           # Audio models support
+fastapi>=0.104.0            # API framework for ESP32
+uvicorn>=0.24.0             # ASGI server
+pydantic>=2.0.0             # Data validation
+
+───────────────────────────────────────────────────────────────────
+
+FOR DETAILED DOCUMENTATION AND INTEGRATION GUIDE:
+See: docs/ESP32_INTEGRATION.md
+See: docs/traffic_monitor.md
+
+═══════════════════════════════════════════════════════════════════
