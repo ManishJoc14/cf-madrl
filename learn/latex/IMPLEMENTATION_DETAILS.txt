@@ -1,0 +1,395 @@
+\chapter{IMPLEMENTATION DETAILS}
+
+\section{Introduction}
+
+This chapter documents the concrete implementation of CF-MADRL: the specific values, system parameters, network architectures, hyperparameters, and deployment configurations.
+
+Core components:
+\begin{itemize}
+    \item SUMO 1.25.0: Traffic simulation engine
+    \item Ray RLlib: PPO training framework
+    \item PyTorch: Neural network inference
+    \item Federated Learning: Weight clustering and aggregation across 4 junctions
+    \item YOLO v2.6 Nano: Vehicle detection on Raspberry Pi
+\end{itemize}
+
+\section{System Overview}
+
+CF-MADRL trains and deploys traffic control policies across multiple intersections. The system has three phases:
+
+\subsection*{Phase 1: Training (70 Rounds)}
+
+\begin{enumerate}
+    \item Each of 4 junctions (J1, J2, J5, J7) runs its own PPO agent in SUMO. Each agent makes 1000 decisions per round.
+    \item Agents upload learned weights to central server.
+    \item Server groups agents into 2 clusters using K-Means based on weight similarity.
+    \item Weights are averaged within each cluster (FedAvg) and sent back.
+    \item Cycle repeats for 70 rounds.
+\end{enumerate}
+
+\subsection*{Phase 2: Evaluation (After Training)}
+
+After 70 rounds, we run separate evaluation to compare performance:
+
+\begin{enumerate}
+    \item Fixed-Time Baseline: Run SUMO simulation (100,000 steps) with fixed control (42s green, 3s yellow per phase).
+    \item CF-MADRL Policy: Run same simulation using trained policies from final checkpoint.
+    \item Compare metrics: average reward, queue length, waiting time.
+    \item Save logs and generate comparison plots.
+\end{enumerate}
+
+\subsection*{Phase 3: Deployment (Raspberry Pi)}
+
+\begin{enumerate}
+    \item Camera captures 30 fps video.
+    \item YOLO v2.6 Nano detects vehicles in each frame.
+    \item Vehicle tracking estimates queue length and waiting time.
+    \item Features are normalized using saved training statistics.
+    \item Policy network decides traffic light phase.
+    \item ESP32 executes signal change.
+\end{enumerate}
+
+\section{Traffic Simulation (SUMO)}
+
+\subsection{Network Topology}
+
+The test network has 4 controlled intersections (J1, J2, J5, J7) defined in SUMO's \texttt{.net.xml} format.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{Junction} & \textbf{Incoming Lanes} & \textbf{Total Phases} & \textbf{Green Phases} \\
+\hline
+J1 & 6 lanes & 4 phases & 2 phases \\
+J2 & 6 lanes & 4 phases & 2 phases \\
+J5 & 4 lanes & 4 phases & 2 phases \\
+J7 & 4 lanes & 4 phases & 2 phases \\
+\hline
+\end{tabular}
+\caption{Junction topology (SUMO).}
+\label{tab:junction_topology}
+\end{table}
+
+\subsection{Simulation Parameters}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
+\hline
+SUMO Physics Step & 1.0 s & Internal SUMO step for vehicle physics \\
+Gridlock Detection Time & 300 s & Episode ends if no vehicles depart for 300s \\
+Max Speed & 50 km/h & Speed limit in network \\
+Yellow Interval & 3 s & Safe transition between green phases \\
+Local Decisions per Round & 1000 & Policy decisions per agent per round \\
+Federated Rounds & 70 & Total federated aggregation cycles \\
+\hline
+\end{tabular}
+\caption{SUMO parameters.}
+\label{tab:sumo_config}
+\end{table}
+
+\subsection{Observation Space}
+
+Agents observe traffic state through SUMO's TraCI API. For each incoming lane $l$ at junction $i$:
+\begin{itemize}
+    \item $q_{i,l}$: Number of halted vehicles
+    \item $w_{i,l}$: Cumulative waiting time (seconds)
+    \item $\phi_i$: Current traffic light phase
+\end{itemize}
+
+All observations are padded to fixed dimension using max lane count ($L_{\max} = 6$):
+
+\begin{equation}
+\mathbf{s}_i^t = [\mathbf{q}_i, \mathbf{w}_i, \phi_i^{\text{norm}}] \in \mathbb{R}^{13}
+\end{equation}
+
+where $\mathbf{q}_i$ and $\mathbf{w}_i$ are 6-dimensional vectors (zero-padded), and $\phi_i^{\text{norm}} = \phi_i / 4$. Total: $6 + 6 + 1 = 13$ features.
+
+\subsection{Normalization}
+
+Features are standardized using running statistics:
+
+\begin{equation}
+\hat{x}_t = \frac{x_t - \mu_t}{\sqrt{\sigma_t^2 + \epsilon}}
+\end{equation}
+
+where $\mu_t$ and $\sigma_t$ are updated every 1000 decisions, $\epsilon = 10^{-8}$. After normalization, values are clipped to $[-10, 10]$.
+
+Statistics are saved to a JSON file containing:
+\begin{itemize}
+    \item Queue mean
+    \item Queue standard deviation
+    \item Waiting time mean
+    \item Waiting time standard deviation
+\end{itemize}
+
+
+\section{Action Space}
+
+Each agent selects a discrete action that encodes both the traffic light phase and its green duration. The action space has 24 discrete options based on the maximum network configuration (4 total phases $\times$ 6 durations = 24 actions), though effective actions depend on each junction's green phases.
+
+Available green phases per junction: 2 (from 4 total phases)
+
+Available durations: $\{10, 20, 30, 40, 50, 60\}$ seconds
+
+When the policy network outputs action $a \in \{0, 1, \ldots, 23\}$, it is decoded as:
+
+\begin{align}
+\text{duration\_idx} &= a \bmod 6 \\
+\text{green\_phase\_idx} &= \lfloor a / 6 \rfloor \bmod \text{num\_green\_phases}
+\end{align}
+
+Then:
+\begin{align}
+\text{duration} &= [10, 20, 30, 40, 50, 60][\text{duration\_idx}] \\
+\text{phase} &= \text{green\_phases}[\text{green\_phase\_idx}]
+\end{align}
+
+For example:
+Action 13: 
+\[
+\begin{cases}
+\text{duration index} = 13 \bmod 6 = 1 \quad \Rightarrow \text{duration[1]} = 20\text{s},\\
+\text{green phase index} = \lfloor 13/6 \rfloor \bmod 2 = 2 \bmod 2 = 0 \quad \Rightarrow
+\end{cases}
+\]
+
+\section{Reward Function}
+
+Reward is computed as:
+
+\begin{equation}
+r_i = -\frac{(\text{total queue} + \text{total waiting time})}{\text{number of lanes}}
+\end{equation}
+
+where total queue is the sum of stopped vehicles across all incoming lanes, and total waiting time is the cumulative waiting seconds. Division by lane count normalizes rewards across junctions with different sizes.
+
+Example for Junction J1 with 6 lanes: if queue = 9 vehicles and waiting time = 41 seconds, then $r = -(9 + 41)/6 = -8.33$.
+
+
+\section{Policy Network}
+
+Each junction uses an identical feed-forward network mapping 13 features to 24 actions:
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|r|r|}
+\hline
+\textbf{Layer} & \textbf{Input Size} & \textbf{Output Size} & \textbf{Parameters} \\
+\hline
+Input & 13 features & — & — \\
+Hidden 1 & 13 & 128 neurons (ReLU) & 1,792 \\
+Hidden 2 & 128 & 64 neurons (ReLU) & 8,256 \\
+Action output & 64 & 24 actions & 1,560 \\
+Value output & 64 & 1 (expected return) & 65 \\
+\hline
+\textbf{Total} & & & \textbf{11,673 parameters} \\
+\hline
+\end{tabular}
+\caption{Policy network architecture.}
+\label{tab:network_arch}
+\end{table}
+
+
+\section{PPO Training}
+
+Training loop per round:
+
+\begin{enumerate}
+    \item Collect experience: Each agent runs in SUMO, making 1000 decisions and collecting state-action-reward transitions.
+    \item Compute advantages: Estimate action quality compared to value function baseline.
+    \item Update policy: Apply clipped gradient updates to increase probability of good actions.
+    \item Update value function: Improve expected reward prediction.
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|l|}
+\hline
+\textbf{Hyperparameter} & \textbf{Value} & \textbf{Description} \\
+\hline
+\multicolumn{3}{|c|}{\textbf{Optimization}} \\
+\hline
+Optimizer & Adam & Adaptive learning rate \\
+Learning Rate & $1 \times 10^{-4}$ & Policy network step size from RLlib PPO \\
+Batch Size (Rollout) & 512 & Transitions before policy update \\
+Minibatch Size & 64 & Mini-batch for SGD steps \\
+SGD Epochs & 20 & Policy update iterations \\
+\hline
+\multicolumn{3}{|c|}{\textbf{RL Parameters}} \\
+\hline
+Discount Factor ($\gamma$) & 0.95 & Return discounting \\
+GAE Lambda ($\lambda$) & 0.95 & Advantage estimation smoothing \\
+Clip Parameter ($\epsilon$) & 0.2 & PPO clipping range $[0.8, 1.2]$ \\
+\hline
+\multicolumn{3}{|c|}{\textbf{Regularization}} \\
+\hline
+Entropy Coefficient & $1 \times 10^{-4}$ & Exploration incentive \\
+Value Function Coefficient & 1.0 & Value loss weighting \\
+Max Grad Norm & 0.5 & Gradient clipping \\
+\hline
+\multicolumn{3}{|c|}{\textbf{Data Collection}} \\
+\hline
+Rollout Fragment Length & 128 & RLlib buffer chunk size \\
+Local Steps per Round & 1000 & Collected before federated aggregation \\
+Num Workers & 0 & Single-process execution\\
+\hline
+\end{tabular}
+\caption{PPO hyperparameters.}
+\label{tab:ppo_hparams}
+\end{table}
+
+\section{Federated Learning}
+
+Agents upload learned weights (not raw data) to the server for averaging. To handle different traffic patterns across junctions, we cluster agents by weight similarity before averaging.
+
+After each round:
+
+\begin{enumerate}
+    \item Extract weights: Convert each agent's network to a vector (11,673 parameters).
+    \item Cluster agents: Use K-Means (K=2) to group the 4 agents into 2 clusters based on weight similarity.
+    \item Average within clusters: Compute mean weights per cluster.
+    \item Send back averaged weights: Each agent receives its cluster's averaged weights.
+\end{enumerate}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} & \textbf{Details} \\
+\hline
+Total Federated Rounds & 70 & Global training rounds \\
+Local Steps per Round & 1000 & Agent experience collection before aggregation \\
+Number of Clusters ($K$) & 2 & Weight-based clustering \\
+Cluster Recompute & Every round & K-Means applied each round \\
+Aggregation & Within clusters & Cluster-wise FedAvg \\
+Checkpoint Frequency & 10 rounds & Model snapshots \\
+\hline
+\end{tabular}
+\caption{Federated learning settings.}
+\label{tab:fed_config}
+\end{table}
+
+
+\section{Vehicle Detection}
+
+On Raspberry Pi 4, traffic state is estimated from camera video:
+
+\begin{enumerate}
+    \item Camera captures 30 fps RGB video.
+    \item YOLO26 Nano detects vehicles in each frame.
+    \item Frame-by-frame tracking associates detections across time.
+    \item Lane-level statistics compute $(q_l, w_l)$ for each lane.
+    \item Features are normalized using training statistics and fed to policy.
+\end{enumerate}
+
+\subsection{YOLO Configuration}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Model & YOLO26 Nano (yolo26n.pt) \\
+Input Resolution & $640 \times 640$ \\
+Detection Classes & 1 (vehicle) \\
+Confidence Threshold & 0.3 \\
+Tracker & ByteTrack \\
+Fallback Model & COCO-pretrained (80 classes) \\
+Vehicle Filter & COCO IDs: 1,2,3,5,7 \\
+\hline
+\textbf{Fine-Tuning (Colab)} & \\
+\hline
+Training Epochs & 50 \\
+Batch Size & 8 \\
+Workers & 2 \\
+Image Size & $640 \times 640$ \\
+Training Dataset & 13 images \\
+Validation Dataset & 4 images \\
+\hline
+\end{tabular}
+\caption{YOLO detection settings.}
+\label{tab:yolo_config}
+\end{table}
+
+\subsection{Hardware Configuration}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Component} & \textbf{Value} \\
+\hline
+Edge Device & Raspberry Pi 4 (4GB RAM) \\
+Inference Framework & PyTorch (CPU) \\
+Camera & ESP32 cam (30 fps) \\
+Signal Control & ESP32 via GPIO/HTTP \\
+\hline
+\end{tabular}
+\caption{Deployment hardware specifications.}
+\label{tab:hardware_specs}
+\end{table}
+
+
+
+\section{Training Configuration}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Total Rounds & 70 \\
+Local Steps per Round & 1000 \\
+Number of Agents & 4 \\
+Random Seed & 42 \\
+Save Interval & 10 rounds \\
+\hline
+\end{tabular}
+\caption{Training settings.}
+\label{tab:training_config}
+\end{table}
+
+Terminology:
+
+\begin{itemize}
+    \item Decision: Agent observes state and selects action. Triggers SUMO to advance.
+    \item Episode: SUMO runs until agent makes 1000 decisions or gridlock occurs (300s no departures).
+    \item Round: One clustered federated cycle where each agent makes 1000 decisions (1--2 episodes), then uploads weights and then gets updated weights.
+\end{itemize}
+
+Per round sequence: Agent makes 1000 decisions → send weights to server → server clusters agents (K=2) → server averages within clusters → agents receive cluster averages → next round.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|l|}
+\hline
+\textbf{Training Parameter} & \textbf{Value} & \textbf{Details} \\
+\hline
+Decisions per Round & 1000 & Policy decisions (action calls) \\
+Yellow Phase Duration & 3 s & Safe transition between green phases \\
+Green Phase Options & 10--60 s & {[}10, 20, 30, 40, 50, 60{]} \\
+Episode Max Steps & 1000 & Termination if 1000 decisions made \\
+Gridlock Timeout & 300 s & Episode terminates if no vehicle departs for 300s \\
+Total Rounds & 70 & Global federated training cycles \\
+\hline
+\end{tabular}
+\caption{Episode and round timing structure.}
+\label{tab:episode_timing}
+\end{table}
+
+
+\section{Implementation Challenges}
+
+\begin{enumerate}
+    \item Observation normalization: Addressed with running mean/variance normalization, statistics saved for deployment.
+    \item Action space size: Fixed at 24 actions across all junctions using modulo-based decoding.
+    \item Non-IID traffic patterns: Handled by K-Means clustering before weight aggregation.
+    \item Simulation-to-reality gap: Reuse training normalization statistics during deployment.
+\end{enumerate}

@@ -1,0 +1,68 @@
+
+
+
+
+[INTRO & CODEBASE OVERVIEW - 25 seconds]
+----------------------------------------
+Good morning. I'm Dharmananda Joshi, presenting our project on 
+"PRIVACY-AWARE ADAPTIVE TRAFFIC SIGNAL CONTROL USING  CF-MADRL"
+ 
+We're grateful to our supervisor, Er. Sudip Rana Sir, for his guidance.
+
+
+Let me start by showing you our codebase structure:
+
+
+It contians YOLO model training specific codes
+
+It contians Learning experiments with training, evaluation, and statistics
+
+It contians Files for Raspberry Pi deployment
+
+It contians Training and evaluation plots
+
+It contians Trained agent policies
+
+It contians Training scripts for Google Colab
+
+It contians RL training files
+
+It contians Simulation network configurations
+
+It contians Utility scripts
+
+
+
+[KEY FILES - 30 seconds]
+
+Now let me show you the key implementation files:
+
+config.yaml - It stores configuration and hyperparameters
+
+main.py - It is the entry point for training or evaluation
+
+train.py - It trains our agents
+
+agent_manager.py - It manages PPO agents per junction
+
+multi_agent_sumo_env.py - It manages SUMO traffic simulation environment
+
+federation.py - It clusters agents and aggregates weights
+
+[DEPLOYMENT - 12 seconds]
+-------------------------
+After training, we deploy everything to Raspberry Pi for real-world use.
+
+These are our trained model weights ready to use.
+
+
+This is our policy network which outputs the best action that reduces queue and wait time.
+
+this is the main inference loop that constantly runs on the Pi.
+
+
+
+"Remaining tasks include 
+hardware assembly,
+end-to-end system testing, 
+real-world deployment validation, 

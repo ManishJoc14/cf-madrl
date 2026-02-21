@@ -1,0 +1,36 @@
+\section{Remaining Tasks}
+
+This section lists work currently in progress or planned for completion.
+
+\subsection{Hardware Integration}
+
+\begin{itemize}
+    \item Assemble complete system: Raspberry Pi 4 + ESP32 + Camera + LED signals
+    \item Implement communication protocol between Pi and ESP32 (UART/GPIO)
+    \item Test signal control logic with yellow transition safety mechanisms
+\end{itemize}
+
+\subsection{End-to-End Pipeline Testing}
+
+\begin{itemize}
+    \item Integrate: Camera $\rightarrow$ YOLO detection $\rightarrow$ State construction $\rightarrow$ Policy inference $\rightarrow$ Signal control
+    \item Validate observation format matches trained model expectations
+    \item Measure total decision latency (target: $<200$ ms)
+\end{itemize}
+
+\subsection{Real-World Validation}
+
+\begin{itemize}
+    \item Deploy system on scaled physical intersection model
+    \item Collect performance metrics: waiting time, queue length, throughput
+    \item Compare against fixed-time baseline and simulation results
+    \item Identify and address sim-to-real gap issues
+\end{itemize}
+
+\subsection{Documentation}
+
+\begin{itemize}
+    \item Finalize system architecture diagrams
+    \item Document deployment procedures and configuration
+    \item Prepare performance evaluation report with statistical analysis
+\end{itemize}

@@ -1,0 +1,470 @@
+[
+  {
+    "round": 1,
+    "agent": "J1",
+    "cluster": -1,
+    "mean_reward": -6.227083333333332,
+    "mean_queue": 1.8,
+    "mean_wait": 71.125,
+    "status": "trained"
+  },
+  {
+    "round": 1,
+    "agent": "J2",
+    "cluster": -1,
+    "mean_reward": -1.460416666666667,
+    "mean_queue": 1.4416666666666667,
+    "mean_wait": 14.641666666666667,
+    "status": "trained"
+  },
+  {
+    "round": 1,
+    "agent": "J5",
+    "cluster": -1,
+    "mean_reward": -0.80625,
+    "mean_queue": 0.575,
+    "mean_wait": 5.3,
+    "status": "trained"
+  },
+  {
+    "round": 1,
+    "agent": "J7",
+    "cluster": -1,
+    "mean_reward": -26.7125,
+    "mean_queue": 3.975,
+    "mean_wait": 205.75,
+    "status": "trained"
+  },
+  {
+    "round": 2,
+    "agent": "J1",
+    "cluster": 0,
+    "mean_reward": -4.3308333333333335,
+    "mean_queue": 0.87,
+    "mean_wait": 50.23,
+    "status": "trained"
+  },
+  {
+    "round": 2,
+    "agent": "J2",
+    "cluster": 1,
+    "mean_reward": -0.36416666666666664,
+    "mean_queue": 0.37,
+    "mean_wait": 3.63,
+    "status": "trained"
+  },
+  {
+    "round": 2,
+    "agent": "J5",
+    "cluster": 0,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  },
+  {
+    "round": 2,
+    "agent": "J7",
+    "cluster": 1,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  },
+  {
+    "round": 3,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -2.084848484848485,
+    "mean_queue": 0.7818181818181819,
+    "mean_wait": 23.454545454545453,
+    "status": "trained"
+  },
+  {
+    "round": 3,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  },
+  {
+    "round": 3,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  },
+  {
+    "round": 3,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  },
+  {
+    "round": 4,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -5.9027777777777795,
+    "mean_queue": 4.8,
+    "mean_wait": 61.233333333333334,
+    "status": "trained"
+  },
+  {
+    "round": 4,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -5.635416666666665,
+    "mean_queue": 4.966666666666667,
+    "mean_wait": 57.69166666666667,
+    "status": "trained"
+  },
+  {
+    "round": 4,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -9.703125,
+    "mean_queue": 5.425,
+    "mean_wait": 66.775,
+    "status": "trained"
+  },
+  {
+    "round": 4,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": -7.558333333333334,
+    "mean_queue": 4.183333333333334,
+    "mean_wait": 52.1,
+    "status": "trained"
+  },
+  {
+    "round": 5,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -13.946666666666665,
+    "mean_queue": 4.66,
+    "mean_wait": 158.04,
+    "status": "trained"
+  },
+  {
+    "round": 5,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -3.67,
+    "mean_queue": 2.48,
+    "mean_wait": 39.08,
+    "status": "trained"
+  },
+  {
+    "round": 5,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -26.275,
+    "mean_queue": 8.71,
+    "mean_wait": 192.78,
+    "status": "trained"
+  },
+  {
+    "round": 5,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": -22.68625,
+    "mean_queue": 9.45,
+    "mean_wait": 162.59,
+    "status": "trained"
+  },
+  {
+    "round": 6,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -0.09948979591836735,
+    "mean_queue": 0.1326530612244898,
+    "mean_wait": 0.9285714285714286,
+    "status": "trained"
+  },
+  {
+    "round": 6,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -2.5008503401360542,
+    "mean_queue": 1.6224489795918366,
+    "mean_wait": 26.76530612244898,
+    "status": "trained"
+  },
+  {
+    "round": 6,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  },
+  {
+    "round": 6,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  },
+  {
+    "round": 7,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -4.0275,
+    "mean_queue": 3.74,
+    "mean_wait": 40.85,
+    "status": "trained"
+  },
+  {
+    "round": 7,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -3.6483333333333325,
+    "mean_queue": 3.16,
+    "mean_wait": 37.46,
+    "status": "trained"
+  },
+  {
+    "round": 7,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -3.795,
+    "mean_queue": 2.69,
+    "mean_wait": 24.98,
+    "status": "trained"
+  },
+  {
+    "round": 7,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": -8.9425,
+    "mean_queue": 5.31,
+    "mean_wait": 60.92,
+    "status": "trained"
+  },
+  {
+    "round": 8,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -4.578472222222221,
+    "mean_queue": 4.408333333333333,
+    "mean_wait": 46.125,
+    "status": "trained"
+  },
+  {
+    "round": 8,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -3.712500000000001,
+    "mean_queue": 3.908333333333333,
+    "mean_wait": 36.733333333333334,
+    "status": "trained"
+  },
+  {
+    "round": 8,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -7.405208333333333,
+    "mean_queue": 3.658333333333333,
+    "mean_wait": 51.925,
+    "status": "trained"
+  },
+  {
+    "round": 8,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": -6.616666666666666,
+    "mean_queue": 3.775,
+    "mean_wait": 45.38333333333333,
+    "status": "trained"
+  },
+  {
+    "round": 9,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -0.20555555555555557,
+    "mean_queue": 0.2,
+    "mean_wait": 2.066666666666667,
+    "status": "trained"
+  },
+  {
+    "round": 9,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -3.7777777777777786,
+    "mean_queue": 1.7916666666666667,
+    "mean_wait": 41.75,
+    "status": "trained"
+  },
+  {
+    "round": 9,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -54.079166666666666,
+    "mean_queue": 11.191666666666666,
+    "mean_wait": 410.25,
+    "status": "trained"
+  },
+  {
+    "round": 9,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": -9.944791666666667,
+    "mean_queue": 3.7666666666666666,
+    "mean_wait": 72.025,
+    "status": "trained"
+  },
+  {
+    "round": 10,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -4.386111111111111,
+    "mean_queue": 4.333333333333333,
+    "mean_wait": 43.96666666666667,
+    "status": "trained"
+  },
+  {
+    "round": 10,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -5.313194444444443,
+    "mean_queue": 4.508333333333334,
+    "mean_wait": 54.74166666666667,
+    "status": "trained"
+  },
+  {
+    "round": 10,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -7.716666666666667,
+    "mean_queue": 3.908333333333333,
+    "mean_wait": 53.916666666666664,
+    "status": "trained"
+  },
+  {
+    "round": 10,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": -9.882291666666667,
+    "mean_queue": 5.266666666666667,
+    "mean_wait": 68.525,
+    "status": "trained"
+  },
+  {
+    "round": 11,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -1.3569444444444443,
+    "mean_queue": 0.7916666666666666,
+    "mean_wait": 14.7,
+    "status": "trained"
+  },
+  {
+    "round": 11,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -1.4194444444444443,
+    "mean_queue": 1.1583333333333334,
+    "mean_wait": 14.716666666666667,
+    "status": "trained"
+  },
+  {
+    "round": 11,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -3.3052083333333333,
+    "mean_queue": 1.8666666666666667,
+    "mean_wait": 22.708333333333332,
+    "status": "trained"
+  },
+  {
+    "round": 11,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": -11.944791666666667,
+    "mean_queue": 4.558333333333334,
+    "mean_wait": 86.44166666666666,
+    "status": "trained"
+  },
+  {
+    "round": 12,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": -69.12499999999999,
+    "mean_queue": 26.4,
+    "mean_wait": 776.7,
+    "status": "trained"
+  },
+  {
+    "round": 12,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -54.74500000000002,
+    "mean_queue": 20.9,
+    "mean_wait": 615.14,
+    "status": "trained"
+  },
+  {
+    "round": 12,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -10.3975,
+    "mean_queue": 5.4,
+    "mean_wait": 72.38,
+    "status": "trained"
+  },
+  {
+    "round": 12,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": -13.7275,
+    "mean_queue": 7.9,
+    "mean_wait": 94.02,
+    "status": "trained"
+  },
+  {
+    "round": 13,
+    "agent": "J1",
+    "cluster": 1,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  },
+  {
+    "round": 13,
+    "agent": "J2",
+    "cluster": 0,
+    "mean_reward": -6.715116279069767,
+    "mean_queue": 2.453488372093023,
+    "mean_wait": 75.67441860465117,
+    "status": "trained"
+  },
+  {
+    "round": 13,
+    "agent": "J5",
+    "cluster": 1,
+    "mean_reward": -0.04215116279069767,
+    "mean_queue": 0.03488372093023256,
+    "mean_wait": 0.26744186046511625,
+    "status": "trained"
+  },
+  {
+    "round": 13,
+    "agent": "J7",
+    "cluster": 0,
+    "mean_reward": 0.0,
+    "mean_queue": 0.0,
+    "mean_wait": 0.0,
+    "status": "trained"
+  }
+]
