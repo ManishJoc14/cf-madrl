@@ -92,6 +92,7 @@ class VehicleTracker:
         self.speeds = deque(maxlen=10)
         self.wait_start = None
         self.in_roi = False
+        self.last_update = time.time()
 
     def update(self, cx, cy, current_time, fps, pixel_to_meter):
         """Update position and calculate speed"""
@@ -105,6 +106,7 @@ class VehicleTracker:
             speed_kmh = (dist_px * pixel_to_meter * fps) * 3.6
 
         self.speeds.append(speed_kmh)
+        self.last_update = time.time()
         return speed_kmh
 
     def is_stopped(self, threshold):
@@ -376,6 +378,13 @@ class LaneMonitor:
 
                 # Process frame
                 detections = self._process_frame(frame)
+
+                # Clean up stale tracks
+                active_ids = set(det['id'] for det in detections)
+                current_time = time.time()
+                for track_id in list(self.tracks.keys()):
+                    if track_id not in active_ids and current_time - self.tracks[track_id].last_update > 1.0:
+                        del self.tracks[track_id]
 
                 # Update metrics
                 self._get_metrics()
