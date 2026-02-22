@@ -14,6 +14,7 @@ from pathlib import Path
 from collections import deque
 from ultralytics import YOLO
 from utils.display_utils import DisplayManager
+from .queue_estimator import VehicleTrack
 
 
 # ==================================================================================================================
@@ -77,49 +78,6 @@ class Config:
             return str(path_obj)
         return str((BASE_DIR / path_obj).resolve())
 
-
-# ==================================================================================================================
-# VEHICLE TRACKER
-# ==================================================================================================================
-
-
-class VehicleTracker:
-    """Track individual vehicle position, speed, and waiting time"""
-
-    def __init__(self, track_id):
-        self.id = track_id
-        self.positions = deque(maxlen=10)
-        self.speeds = deque(maxlen=10)
-        self.wait_start = None
-        self.in_roi = False
-
-    def update(self, cx, cy, current_time, fps, pixel_to_meter):
-        """Update position and calculate speed"""
-        self.positions.append((cx, cy))
-
-        # Calculate speed
-        speed_kmh = 0.0
-        if len(self.positions) > 1:
-            prev_cx, prev_cy = self.positions[-2]
-            dist_px = np.hypot(cx - prev_cx, cy - prev_cy)
-            speed_kmh = (dist_px * pixel_to_meter * fps) * 3.6
-
-        self.speeds.append(speed_kmh)
-        return speed_kmh
-
-    def is_stopped(self, threshold):
-        """Check if vehicle is stopped based on speed threshold"""
-        if len(self.speeds) == 0:
-            return False
-        return np.mean(list(self.speeds)[-3:]) < threshold
-
-    def get_wait_time(self):
-        """Get current waiting time"""
-        if self.wait_start:
-            return time.time() - self.wait_start
-        return 0.0
-
-
 # ==================================================================================================================
 # LANE MONITOR (Single Camera Feed)
 # ==================================================================================================================
@@ -146,6 +104,7 @@ class LaneMonitor:
 
         self.tracks = {}
         self.roi_bounds = None
+        self.region = None
         self.running = True
         self.frame_count = 0
         self.latest_metrics = {
@@ -165,13 +124,14 @@ class LaneMonitor:
             int(width * roi["x_max"]),
             int(height * roi["y_max"]),
         )
-
-    def _is_in_roi(self, cx, cy):
-        """Check if point is inside ROI"""
-        if not self.roi_bounds:
-            return False
+        # Create polygon for region-based checking
         x_min, y_min, x_max, y_max = self.roi_bounds
-        return x_min < cx < x_max and y_min < cy < y_max
+        self.region = np.array([
+            [x_min, y_min],
+            [x_max, y_min],
+            [x_max, y_max],
+            [x_min, y_max]
+        ], dtype=np.float32)
 
     def _process_frame(self, frame):
         """Run YOLO detection with fallback if needed"""
@@ -205,11 +165,6 @@ class LaneMonitor:
 
         detections = []
 
-        # Debug how many boxes YOLO sees at all
-        if results and results[0].boxes:
-            # print(f"YOLO RAW BOXES: {len(results[0].boxes)}")
-            pass
-
         # If tracking ID exists, process tracking info
         if results and results[0].boxes and results[0].boxes.id is not None:
             boxes = results[0].boxes.xyxy.cpu().numpy()
@@ -217,8 +172,6 @@ class LaneMonitor:
             clss = results[0].boxes.cls.cpu().numpy().astype(int)
 
             for box, yolo_id, cls_id in zip(boxes, ids, clss):
-                # Optionally print class ids to see what's being detected
-                # print(f"Detected class: {cls_id}")
                 if cls_id not in self.config.VEHICLE_CLASSES:
                     continue
 
@@ -228,23 +181,21 @@ class LaneMonitor:
 
                 # Update or create track
                 if yolo_id not in self.tracks:
-                    self.tracks[yolo_id] = VehicleTracker(yolo_id)
+                    fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
+                    self.tracks[yolo_id] = VehicleTrack(yolo_id, box, fps)
 
                 track = self.tracks[yolo_id]
-                fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
-                speed = track.update(
-                    cx, cy, time.time(), fps, self.config.PIXEL_TO_METER
-                )
+                track.update_position(box)
+
+                # Calculate speed in km/h
+                if len(track.speeds) > 0:
+                    avg_speed_pixels_sec = np.mean(list(track.speeds))
+                    speed = avg_speed_pixels_sec * self.config.PIXEL_TO_METER * 3.6
+                else:
+                    speed = 0.0
 
                 # Update ROI status
-                track.in_roi = self._is_in_roi(cx, cy)
-
-                # Update waiting time
-                if track.in_roi and track.is_stopped(self.config.STOP_SPEED_KMH):
-                    if track.wait_start is None:
-                        track.wait_start = time.time()
-                else:
-                    track.wait_start = None
+                track.in_roi = track.is_in_region(self.region) if self.region is not None else False
 
                 detections.append(
                     {
@@ -253,7 +204,7 @@ class LaneMonitor:
                         "cx": cx,
                         "cy": cy,
                         "speed": speed,
-                        "wait": track.get_wait_time(),
+                        "wait": track.get_current_wait_time(),
                     }
                 )
         return detections
@@ -334,9 +285,9 @@ class LaneMonitor:
         total_wait = 0.0
 
         for track in self.tracks.values():
-            if track.in_roi and track.is_stopped(self.config.STOP_SPEED_KMH):
+            if track.in_roi and track.is_waiting:
                 queue_length += 1
-                total_wait += track.get_wait_time()
+                total_wait += track.get_current_wait_time()
 
         avg_wait = total_wait / queue_length if queue_length > 0 else 0.0
         self.latest_metrics = {
@@ -377,12 +328,18 @@ class LaneMonitor:
                 # Process frame
                 detections = self._process_frame(frame)
 
+                # Clean up stale tracks
+                active_ids = set(det['id'] for det in detections)
+                current_time = time.time()
+                for track_id in list(self.tracks.keys()):
+                    if track_id not in active_ids and current_time - self.tracks[track_id].last_update > 5.0:
+                        del self.tracks[track_id]
+
                 # Update metrics
                 self._get_metrics()
 
                 # Display if enabled
                 if self.config.DISPLAY and self.display_manager:
-                    print("Drawing frame")
                     annotated_frame = self._draw_frame(frame, detections)
                     self.display_manager.update_frame(self.lane_id, annotated_frame)
 
