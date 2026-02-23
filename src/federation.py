@@ -6,7 +6,7 @@ import torch
 
 
 class ClusteredFederatedServer:
-
+    # Initialize ClusteredFederatedServer
     def __init__(self, n_clusters: int = 2):
         # number of clusters to form
         self.n_clusters = n_clusters
@@ -28,6 +28,7 @@ class ClusteredFederatedServer:
         # }
         self.cluster_assignments = {}
 
+    # Cluster agents using agent weights
     def cluster_agents(self, agent_weights: Dict[str, Dict]):
         """
         Cluster agents based on similarity of their model weights.
@@ -104,7 +105,7 @@ class ClusteredFederatedServer:
         #   [0.11, 0.02, 0.85, 0.00, 0.00], of aid[2] i.e junction_3
         # ]
 
-        # apply KMeans clustering on model vectors
+        # NOTE - Apply KMeans clustering on model vectors
         kmeans = KMeans(n_clusters=self.n_clusters, random_state=42, n_init=10)
         labels = kmeans.fit_predict(X)
 
@@ -115,7 +116,7 @@ class ClusteredFederatedServer:
         self.clusters = {i: [] for i in range(self.n_clusters)}
         self.cluster_assignments = {}
 
-        # assign each agent to its cluster
+        # NOTE - assign each agent to its cluster
         for idx, label in enumerate(labels):
             aid = agent_ids[idx]
             self.clusters[label].append(aid)
@@ -129,11 +130,16 @@ class ClusteredFederatedServer:
 
         return self.clusters
 
+    # Aggregate weights within clusters
     def aggregate(
-        self, agent_weights: Dict[str, Dict[str, Any]]
+        self, agent_weights: Dict[str, Dict[str, Any]], blend_alpha: float = 0.5
     ) -> Dict[str, Dict[str, Any]]:
         """
-        Perform FedAvg inside each cluster and broadcast back.
+        Perform FedAvg inside each cluster, then blend with each agent's own weights.
+
+        blend_alpha: weight given to the cluster average (0.0 = pure local, 1.0 = pure FedAvg).
+        Default 0.5 means 50% local + 50% cluster average, preserving agent individuality
+        so that clusters can evolve over training rounds.
         """
 
         cluster_models = {}
@@ -165,7 +171,7 @@ class ClusteredFederatedServer:
                 for k in w:
                     agg_weights[k] += w[k]
 
-            # average
+            # NOTE - Aggregation weights within cluster
             N = len(agent_ids)
             for k in agg_weights:
                 agg_weights[k] /= N
@@ -173,16 +179,17 @@ class ClusteredFederatedServer:
             # save
             cluster_models[cid] = agg_weights
 
-        # broadcast aggregated model back to each agent
+        # NOTE - Soft blend: each agent gets (1-alpha)*local + alpha*cluster_avg
+        # This preserves agent individuality so clusters can evolve over rounds.
         result = {}
-        # looks like:
-        # {
-        #   "junction_1": cluster_0_weights,
-        #   "junction_2": cluster_1_weights,
-        #   "junction_3": cluster_0_weights
-        # }
-
         for aid, cid in self.cluster_assignments.items():
-            result[aid] = cluster_models[cid]
+            cluster_avg = cluster_models[cid]
+            local_w = agent_weights[aid]
+            blended = {}
+            for k in local_w:
+                blended[k] = (1.0 - blend_alpha) * local_w[
+                    k
+                ] + blend_alpha * cluster_avg[k]
+            result[aid] = blended
 
         return result

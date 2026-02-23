@@ -5,7 +5,7 @@ import numpy as np
 
 # Add project root to path to import project modules
 sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 
 from src.agent_manager import AgentManager
@@ -19,7 +19,7 @@ def validate():
 
     # Setup Paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    root_dir = os.path.dirname(os.path.dirname(script_dir))
+    root_dir = os.path.dirname(script_dir)
     config_path = os.path.join(root_dir, "config.yaml")
     model_path = os.path.join(script_dir, "..", "pi", "models", "model.pt")
 

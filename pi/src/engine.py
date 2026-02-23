@@ -5,7 +5,6 @@ import time
 import torch
 import numpy as np
 import json
-import sys
 import threading
 from pathlib import Path
 from utils.inference_utils import RunningNorm
@@ -33,8 +32,10 @@ class TrafficInference:
         green_phases_indices=None,
         use_yolo_deploy=True,
         yolo_config_file="configs/yolo_config.yaml",
+        display=False,
     ):
         self.max_lanes = max_lanes
+        self.display = display
         self.max_phases = max_phases
         self.num_green_phases = num_green_phases
         self.green_phases_indices = green_phases_indices or [0, 2]
@@ -84,6 +85,25 @@ class TrafficInference:
 
         try:
             config = Config(config_path)
+            if self.display:
+                config.DISPLAY = True
+
+            # Initialize display manager if needed
+            self.display_manager = None
+            if config.DISPLAY:
+                try:
+                    from utils.display_utils import DisplayManager
+
+                    self.display_manager = DisplayManager("CF-MADRL Traffic Monitor")
+                    self.display_thread = threading.Thread(
+                        target=self.display_manager.show_loop, daemon=True
+                    )
+                    self.display_thread.start()
+                    print("✓ Display manager initialized")
+                except Exception as e:
+                    print(f"Warning: Failed to init display manager: {e}")
+                    config.DISPLAY = False
+                    self.display_manager = None
 
             # Load models
             primary_model = None
@@ -110,7 +130,11 @@ class TrafficInference:
             for lane_cfg in config.LANES:
                 try:
                     monitor = LaneMonitor(
-                        lane_cfg, primary_model, fallback_model, config
+                        lane_cfg,
+                        primary_model,
+                        fallback_model,
+                        config,
+                        self.display_manager,
                     )
                     self.lane_monitors[lane_cfg["id"]] = monitor
 

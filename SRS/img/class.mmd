@@ -1,0 +1,30 @@
+classDiagram
+    class AgentManager {
+        +agents: list
+        +train()
+        +evaluate()
+        +deploy()
+    }
+
+    class FederatedCoordinator {
+        +clusters: list
+        +aggregate_updates()
+        +distribute_model()
+    }
+
+    class SUMOEnvironment {
+        +network: str
+        +step(action)
+        +reset()
+        +get_state()
+    }
+
+    class YOLODetector {
+        +model: YOLO
+        +detect(frame)
+    }
+
+    AgentManager --> FederatedCoordinator : coordinates
+    FederatedCoordinator --> AgentManager : updates
+    AgentManager --> SUMOEnvironment : interacts
+    YOLODetector --> SUMOEnvironment : provides data

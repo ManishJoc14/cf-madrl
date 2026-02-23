@@ -3,9 +3,7 @@ import os
 import torch
 
 # Add project root to path to import project modules
-sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.agent_manager import AgentManager
 from src.multi_agent_sumo_env import MultiAgentSumoEnv
@@ -15,7 +13,7 @@ from tools.utils import load_config, scan_topology
 def export_weights():
     # Setup Paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    root_dir = os.path.dirname(os.path.dirname(script_dir))
+    root_dir = os.path.dirname(script_dir)
     config_path = os.path.join(root_dir, "config.yaml")
 
     # Load Configuration

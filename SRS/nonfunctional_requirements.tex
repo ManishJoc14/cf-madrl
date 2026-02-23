@@ -1,0 +1,45 @@
+\section{Performance Requirements}
+
+\begin{itemize}
+\item The system shall process vehicle detection at >10 FPS on standard hardware.
+\item Training convergence shall be achieved within 100,000 simulation steps.
+\item Federated updates shall complete within 5 minutes per cycle.
+\item Response time for signal control decisions shall be <100ms.
+\end{itemize}
+
+\section{Safety Requirements}
+
+\begin{itemize}
+\item The system shall maintain minimum green times to prevent unsafe conditions.
+\item Signal phase changes shall follow standard traffic control protocols.
+\item The system shall include fail-safe mechanisms for hardware failures.
+\item Emergency vehicle prioritization shall be supported [TBD].
+\end{itemize}
+
+\section{Security Requirements}
+
+\begin{itemize}
+\item Federated learning shall ensure data privacy across clusters.
+\item Communication channels shall use encryption for model exchanges.
+\item Access to system logs shall be restricted to authorized users.
+\item The system shall comply with data protection regulations (e.g., GDPR-like principles).
+\end{itemize}
+
+\section{Software Quality Attributes}
+
+\begin{itemize}
+\item \textbf{Reliability}: System uptime >99\% during operation.
+\item \textbf{Usability}: Configuration files shall be human-readable and well-documented.
+\item \textbf{Maintainability}: Code shall follow modular design principles.
+\item \textbf{Testability}: Unit test coverage >80\%.
+\item \textbf{Extensibility}: Plugin architecture for additional RL algorithms.
+\end{itemize}
+
+\section{Business Rules}
+
+\begin{itemize}
+\item Traffic optimization shall prioritize reduction in average waiting times.
+\item System shall operate within computational budgets of target hardware.
+\item Federated clusters shall be defined by traffic engineers based on domain knowledge.
+\item Model updates shall not disrupt real-time operations.
+\end{itemize}

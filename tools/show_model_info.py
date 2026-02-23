@@ -4,7 +4,7 @@ import torch
 
 # Add project root to path
 sys.path.append(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 )
 
 from pi.utils.model import PPOPolicy
@@ -34,6 +34,11 @@ def show_summary():
 
     # Instantiate Model
     model = PPOPolicy(obs_dim, act_dim)
+    
+    from torchview import draw_graph
+    
+    model_graph = draw_graph(model, input_size=(1, obs_dim), expand_nested=True)
+    model_graph.visual_graph.render("model_architecture", format="png")
 
     print("\n" + "=" * 50)
     print("      PyTorch Model Architecture Summary")

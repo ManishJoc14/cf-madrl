@@ -7,7 +7,7 @@ class PPOPolicy(nn.Module):
     PyTorch implementation of the trained PPO policy network.
     """
 
-    def __init__(self, obs_dim, act_dim, hidden_sizes=[128, 64], activation=nn.ReLU):
+    def __init__(self, obs_dim, act_dim, hidden_sizes=[256, 256], activation=nn.ReLU):
         super(PPOPolicy, self).__init__()
         layers = []
         input_dim = obs_dim

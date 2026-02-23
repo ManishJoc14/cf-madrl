@@ -1,0 +1,61 @@
+\documentclass{report}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{longtable}
+\usepackage{fancyhdr}
+
+% Custom command for requirements
+\newcounter{reqcounter}
+\newcommand{\req}{\stepcounter{reqcounter}\textbf{REQ-\arabic{reqcounter}: }}
+
+% Title page information
+\title{Software Requirements Specification for Privacy-Aware Adaptive Traffic Signal Control using Clustered Federated Multi-Agent Deep Reinforcement Learning}
+\author{TRIBHUVAN UNIVERSITY \\ INSTITUTE OF ENGINEERING \\ THAPATHALI CAMPUS}
+\date{February 2026}
+
+\begin{document}
+
+\input{titlepage.tex}
+
+\pagenumbering{roman}
+\tableofcontents
+\newpage
+\listoftables
+\newpage
+\listoffigures
+\newpage
+
+\input{revision_history.tex}
+
+\pagenumbering{arabic}
+
+\chapter{Introduction}
+\input{introduction.tex}
+
+\chapter{Overall Description}
+\input{overall_description.tex}
+
+\chapter{External Interface Requirements}
+\input{external_interface.tex}
+
+\chapter{System Features}
+\input{system_features.tex}
+
+\chapter{Other Nonfunctional Requirements}
+\input{nonfunctional_requirements.tex}
+
+\chapter{Other Requirements}
+\input{other_requirements.tex}
+
+\appendix
+\chapter{Glossary}
+\input{appendix_glossary.tex}
+
+\chapter{Analysis Models}
+\input{appendix_models.tex}
+
+\chapter{To Be Determined List}
+\input{appendix_tbd.tex}
+
+\end{document}

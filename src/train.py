@@ -3,9 +3,10 @@ Training entry for CF-MADRL using RLlib multi-agent PPO.
 """
 
 import os
-import json
 import logging
 import warnings
+import torch
+import numpy as np
 
 from src.agent_manager import AgentManager
 from src.federation import ClusteredFederatedServer
@@ -16,62 +17,52 @@ from tools.utils import ensure_dir, log_metrics, Logger, scan_topology
 
 def train_rllib(config, args_rounds=None):
     """
-    Train CF-MADRL agents using RLlib multi-agent PPO in a shared SUMO environment.
+    Clustered Federated Multi-Agent RL training using RLlib PPO.
 
-    Steps:
-    1. Discover SUMO network topology (max lanes & phases).
-    2. Initialize Multi-Agent SUMO environment.
-    3. Setup RLlib AgentManager for each junction.
-    4. Setup FederatedServer for clustering and aggregation.
-    5. Run federated training loop:
-        a) Local training
-        b) Metrics logging
-        c) Clustering of agents
-        d) Weight aggregation
-        e) Distribute updated models
-    6. Save final model and print cluster summary.
+    Each agent controls a junction in SUMO. Agents are trained locally
+    for a number of steps per round, then their weights are clustered
+    and aggregated across clusters. Training uses patience to allow
+    early stopping if convergence is detected.
     """
 
-    # Silence noisy loggers
+    # ---- Silence warnings and logging ----
     warnings.filterwarnings("ignore")
     logging.getLogger("ray").setLevel(logging.ERROR)
     logging.getLogger("ray.rllib").setLevel(logging.ERROR)
 
     Logger.header("CF-MADRL Federated Training")
 
-    # Setup directories
-    ensure_dir(config["system"]["model_save_path"])
-    ensure_dir("logs")
+    # ---- Prepare directories for models and logs ----
+    model_dir = os.path.abspath(config["system"]["model_save_path"])
+    log_dir = config["system"].get("log_dir", "logs")
+    ensure_dir(model_dir)
+    ensure_dir(log_dir)
 
-    # Training parameters
+    # ---- Load training hyperparameters ----
     local_steps = config["training"]["local_steps_per_round"]
-    rounds = (
-        args_rounds
-        if args_rounds is not None
-        else config["training"]["federated_rounds"]
-    )
-    save_freq = config["training"]["save_freq"]
+    rounds = args_rounds if args_rounds else config["training"]["federated_rounds"]
+    save_freq = config["training"].get("save_freq", 5)
     n_clusters = config["training"]["n_clusters"]
 
-    # Check for GPU
-    import torch
+    # ---- Load patience configuration for early stopping ----
+    patience_cfg = config["training"].get("patience", {})
+    patience_enabled = patience_cfg.get("enabled", False)
+    patience_epochs = patience_cfg.get("epochs", 10)
+    min_reward_delta = patience_cfg.get("min_reward_delta", 0.05)
+    patience_counter = 0
+    best_reward = -np.inf  # Tracks best observed average reward
 
-    device_name = "cuda" if torch.cuda.is_available() else "cpu"
-    Logger.info(f"Training Device Detected: {device_name.upper()}")
-    if device_name == "cuda":
+    # ---- Device information ----
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    Logger.info(f"Training Device: {device.upper()}")
+    if device == "cuda":
         Logger.info(f"GPU: {torch.cuda.get_device_name(0)}")
 
-    # 1. Scan SUMO topology
-    Logger.section("Phase 1: Environment Discovery & Setup")
-    Logger.narrative("Scanning SUMO network topology...")
+    # ---- Discover environment topology ----
     max_lanes, max_phases = scan_topology(config)
     junction_ids = config["system"]["controlled_junctions"]
-    Logger.narrative(
-        f"Topology discovered: {max_lanes} lanes, {max_phases} phases across {len(junction_ids)} junctions."
-    )
 
-    # 2. Initialize environment
-    Logger.narrative("Initializing Multi-Agent SUMO Environment...")
+    # ---- Initialize SUMO multi-agent environment ----
     env = MultiAgentSumoEnv(
         {
             "config": config,
@@ -81,139 +72,106 @@ def train_rllib(config, args_rounds=None):
         }
     )
 
-    # 3. Setup RLlib AgentManager
-    checkpoint_dir = os.path.abspath(config["system"]["model_save_path"])
-    is_resuming = os.path.exists(checkpoint_dir) and any(os.scandir(checkpoint_dir))
-    Logger.narrative("Building RLlib PPO Algorithm Stack...")
+    # ---- Initialize RLlib agent manager ----
     agent_manager = AgentManager(env, config, junction_ids)
 
+    # ---- Check for existing checkpoints and resume if available ----
+    is_resuming = os.path.exists(model_dir) and any(os.scandir(model_dir))
     if is_resuming:
-        Logger.info(f"Resuming training from checkpoint: {checkpoint_dir}")
         try:
-            agent_manager.load(checkpoint_dir)
-            Logger.success("Checkpoint loaded successfully.")
+            agent_manager.load(model_dir)
+            Logger.success("Checkpoint loaded.")
         except Exception as e:
-            Logger.warning(f"Failed to load checkpoint: {e}. Starting fresh.")
+            Logger.warning(f"Checkpoint load failed: {e}")
             agent_manager.build()
     else:
         agent_manager.build()
 
-    # 4. Setup ClusteredFederatedServer
+    # ---- Initialize federated server for clustering agents ----
     server = ClusteredFederatedServer(n_clusters=n_clusters)
-    Logger.success(
-        f"System ready | Agents: {len(junction_ids)}, Clusters: {n_clusters}, Rounds: {rounds}"
-    )
 
-    # 5. Training Loop
-    log_file = os.path.join(
-        config["system"].get("log_dir", "logs"), "training_logs.json"
-    )
+    # ---- Prepare log file ----
+    log_file = os.path.join(log_dir, "training_logs.json")
     if not is_resuming and os.path.exists(log_file):
         os.remove(log_file)
 
-    start_round = 1
-    if is_resuming and os.path.exists(log_file):
-        try:
-            with open(log_file, "r") as f:
-                logs = json.load(f)
-                if logs:
-                    start_round = max(ln["round"] for ln in logs) + 1
-        except Exception as ex:
-            Logger.warning(f"Could not determine start round from logs: {ex}")
+    Logger.success(
+        f"System Ready | Agents: {len(junction_ids)} | Clusters: {n_clusters} | Rounds: {rounds}"
+    )
 
-    Logger.info(f"Starting training from Round {start_round}")
-
+    # ---- Main training loop ----
     for r in range(rounds):
-        current_round = start_round + r
-        Logger.round_banner(current_round, rounds + start_round - 1)
+        Logger.round_banner(r + 1, rounds)
 
-        # a) Local Training
-        Logger.narrative(f"Phase 1: Local Training for {len(junction_ids)} agents...")
+        # Compute number of training iterations for this round
         batch_size = config["rl"].get("train_batch_size", 512)
         num_iterations = max(1, local_steps // batch_size)
+
+        # ---- Local training for each agent ----
         result = agent_manager.train(num_iterations=num_iterations)
 
-        # b) Metrics Logging
-        Logger.narrative("Phase 2: Logging metrics for each agent...")
+        # ---- Extract per-agent metrics ----
         round_metrics = agent_manager.get_metrics(result)
-        display_reward = 0.0
-        active_agents = 0
-        for aid in junction_ids:
-            if aid in round_metrics:
-                display_reward += round_metrics[aid]["mean_reward"]
-                active_agents += 1
-        display_reward = display_reward / active_agents if active_agents > 0 else 0.0
 
-        # Save metrics to log file
+        # ---- Log metrics for each agent ----
         for aid in junction_ids:
             m = round_metrics.get(
                 aid, {"mean_reward": 0.0, "mean_queue": 0.0, "mean_wait": 0.0}
             )
             log_metrics(
                 {
-                    "round": current_round,
+                    "round": r + 1,
                     "agent": aid,
-                    "status": "trained",
                     "cluster": int(server.cluster_assignments.get(aid, -1)),
                     **m,
+                    "status": "trained",
                 },
                 log_file,
             )
 
-        # c) Clustering
-        Logger.narrative("Phase 3: Clustering agents based on weights...")
-        agent_weights = agent_manager.get_weights()
-        server.cluster_agents(agent_weights)
+        # ---- Federated clustering and weight aggregation ----
+        weights = agent_manager.get_weights()
+        server.cluster_agents(weights)  # Assign agents to clusters
+        cluster_weights = server.aggregate(weights)  # Aggregate weights per cluster
 
-        # d) Federated Aggregation
-        Logger.narrative("Phase 4: Aggregating weights within clusters...")
-        cluster_weights = server.aggregate(agent_weights)
+        # ---- Update agent weights only if changed ----
+        for aid, w in cluster_weights.items():
+            agent_manager.set_weights({aid: w})
 
-        # e) Redistribute models
-        Logger.narrative("Phase 5: Updating agents with cluster-aggregated weights...")
-        for aid, weights in cluster_weights.items():
-            agent_manager.set_weights({aid: weights})
+        # ---- Compute average reward for convergence check ----
+        avg_reward = sum(
+            round_metrics.get(aid, {}).get("mean_reward", 0.0) for aid in junction_ids
+        ) / len(junction_ids)
+        Logger.success(f"Round {r + 1}/{rounds} | Avg Reward: {avg_reward:.2f}")
 
-        Logger.success(
-            f"Round {current_round}/{rounds} complete | Avg Reward: {display_reward:7.2f}"
-        )
+        # ---- Early stopping / patience logic ----
+        if patience_enabled:
+            if avg_reward - best_reward >= min_reward_delta:
+                best_reward = avg_reward
+                patience_counter = 0
+            else:
+                patience_counter += 1
+                if patience_counter >= patience_epochs:
+                    Logger.info(
+                        f"Training converged early at round {r + 1} (patience limit reached)."
+                    )
+                    break
 
-        # Save checkpoint periodically
-        if current_round % save_freq == 0:
+        # ---- Save checkpoint periodically ----
+        if (r + 1) % save_freq == 0:
             agent_manager.save()
-            # Save norm stats as well
-            norm_path = os.path.join(
-                config["system"].get("log_dir", "logs"), "norm_stats.json"
-            )
-            env.save_norm_stats(norm_path)
 
-    # 6. Final save & cluster summary
+    # ---- Save final checkpoint ----
     final_checkpoint = agent_manager.save()
     Logger.success(f"Training complete | Final checkpoint: {final_checkpoint}")
 
-    Logger.section("Final Federated Cluster Summary")
-    cluster_groups = {}
-    for aid, cid in server.cluster_assignments.items():
-        cluster_groups.setdefault(cid, []).append(aid)
-
-    for cid, agents in sorted(cluster_groups.items()):
-        print(f"Cluster {cid}:")
-        for aid in agents:
-            print(f"  - {aid}")
-    print("-" * 50)
-
-    # Generate Training Plots
-    Logger.narrative("Generating training plots...")
+    # ---- Plot training progress ----
     try:
-        # generate reward/queue/cluster plots
-        plot_training(log_file="logs/training_logs.json", output_dir="plots")
-        plot_clusters(log_file="logs/training_logs.json", output_dir="plots")
-        Logger.success("Training plots generated in 'plots/' directory.")
+        plot_training(log_file=log_file, output_dir="plots")
+        plot_clusters(log_file=log_file, output_dir="plots")
     except Exception as e:
-        Logger.warning(f"Failed to generate training plots: {e}")
+        Logger.warning(f"Plotting failed: {e}")
 
-    # Cleanup
+    # ---- Cleanup ----
     agent_manager.close()
-    norm_path = os.path.join(config["system"].get("log_dir", "logs"), "norm_stats.json")
-    env.save_norm_stats(norm_path)
     env.close()

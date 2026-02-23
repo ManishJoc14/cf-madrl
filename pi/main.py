@@ -28,15 +28,12 @@ def main():
     # Initialize engine
     print("Initializing CF-MADRL...")
     try:
-        engine = TrafficInference(use_yolo_deploy=(args.mode == "real"))
+        engine = TrafficInference(
+            use_yolo_deploy=(args.mode == "real"), display=args.display
+        )
     except Exception as e:
         print(f"Error: {e}")
         return
-
-    # Enable display if requested
-    if args.display and engine.use_yolo_deploy:
-        for monitor in engine.lane_monitors.values():
-            monitor.config.DISPLAY = True
 
     # Run requested mode
     if args.mode == "real":

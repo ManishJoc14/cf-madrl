@@ -86,6 +86,7 @@ class AgentManager:
         # Read RL configurations
         rl_cfg = config.get("rl", {})
 
+        # NOTE - Define RL configuration
         # PPOConfig
         self.algo_config = (
             PPOConfig()
@@ -107,8 +108,16 @@ class AgentManager:
             .framework("torch")
             # Needed for weight extraction later
             .training(
-                lr=rl_cfg.get("lr", 0.0001),
+                lr=rl_cfg.get("lr", 0.0001)
+                if "lr_schedule" not in rl_cfg
+                else rl_cfg["lr_schedule"][0][1],
+                lr_schedule=rl_cfg.get("lr_schedule"),
+                entropy_coeff=rl_cfg.get("entropy_coeff", 0.001)
+                if "entropy_coeff_schedule" not in rl_cfg
+                else rl_cfg["entropy_coeff_schedule"][0][1],
+                entropy_coeff_schedule=rl_cfg.get("entropy_coeff_schedule"),
                 gamma=rl_cfg.get("gamma", 0.95),
+                lambda_=rl_cfg.get("gae_lambda", 0.95),
                 train_batch_size=rl_cfg.get("train_batch_size", 512),
                 num_epochs=rl_cfg.get("num_sgd_iter", 20),
                 model={
@@ -150,6 +159,7 @@ class AgentManager:
 
         self.algo = None
 
+    # Build a algorithm from above configuration
     def build(self):
         """Build the RLlib algorithm."""
 
@@ -158,6 +168,7 @@ class AgentManager:
             self.algo = self.algo_config.build()
             Logger.success("RLlib algorithm initialized successfully.")
 
+    # Trains agents in our environment.
     def train(self, num_iterations: int = 1):
         """Train our agents."""
         if self.algo is None:
@@ -169,6 +180,7 @@ class AgentManager:
 
         return result
 
+    # Get weights for KMeans Clustering purpose
     def get_weights(self) -> Dict[str, Dict]:
         """Get weights of all agents."""
 
@@ -192,6 +204,7 @@ class AgentManager:
 
         return weights
 
+    # Update weights of agents from assigned cluster weights.
     def set_weights(self, weights: Dict[str, Dict]):
         """loads weights into the RLlib PPO agent's policy"""
 
@@ -210,6 +223,7 @@ class AgentManager:
                 }
                 policy.set_weights(w_torch)
 
+    # SAVE weights
     def save(self) -> str:
         """Save a checkpoint."""
 
@@ -222,6 +236,7 @@ class AgentManager:
 
         return checkpoint
 
+    # LOAD weights
     def load(self, checkpoint_path: str):
         """Restore agent state from saved checkpoint."""
 
@@ -230,6 +245,7 @@ class AgentManager:
 
         self.algo.restore(checkpoint_path)
 
+    # Get agents metrics
     def get_metrics(self, result: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
         """Extract per-agent metrics from GlobalMetrics tracker or RLlib."""
 

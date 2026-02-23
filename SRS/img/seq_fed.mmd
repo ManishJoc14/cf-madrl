@@ -1,0 +1,9 @@
+sequenceDiagram
+    participant LA as Local Agent
+    participant CC as Cluster Coordinator
+    participant GS as Global Server
+
+    LA->>CC: Send local model update
+    CC->>GS: Send aggregated cluster update
+    GS->>CC: Send global model
+    CC->>LA: Send updated model

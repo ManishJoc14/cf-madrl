@@ -1,0 +1,11 @@
+sequenceDiagram
+    participant Cam as Traffic Camera
+    participant YOLO as YOLO Detector
+    participant RL as RL Agent
+    participant SC as Signal Controller
+    participant TL as Traffic Lights
+
+    Cam->>YOLO: Video frame
+    YOLO->>RL: Vehicle detection data
+    RL->>SC: Control decision
+    SC->>TL: Change signal phase

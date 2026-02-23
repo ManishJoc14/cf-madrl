@@ -7,11 +7,13 @@ def pack_project():
     # Exclude these directories
     excludes = {
         ".venv",
-        "venv"
-        "__pycache__",
+        "venv__pycache__",
         ".git",
         ".vscode",
-        "pi"
+        "pi",
+        "CF-MADRL-YOLO",
+        "learn",
+        "pi",
     }
 
     with zipfile.ZipFile(output_filename, "w", zipfile.ZIP_DEFLATED) as zipf:

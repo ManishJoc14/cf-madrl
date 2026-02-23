@@ -19,42 +19,43 @@ lanes:
   # Lane 0 - South approach
   - id: "lane_0"
     name: "South Lane"
-    camera_url: "http://192.168.1.100:81/stream"
+    # camera_url: "http://192.168.101.11:8080/video"
+    camera_url: "http://10.218.234.248"
     roi:
       y_min: 0.0 # Detection zone: full height
       y_max: 1.0 # Detection zone: full height
       x_min: 0.0 # Detection zone: full width
       x_max: 1.0 # Detection zone: full width
 
-  # Lane 1 - East approach
-  - id: "lane_1"
-    name: "East Lane"
-    camera_url: "http://192.168.1.101:81/stream"
-    roi:
-      y_min: 0.0
-      y_max: 1.0
-      x_min: 0.0
-      x_max: 1.0
+  # # Lane 1 - East approach
+  # - id: "lane_1"
+  #   name: "East Lane"
+  #   camera_url: "http://192.168.1.101:81/stream"
+  #   roi:
+  #     y_min: 0.0
+  #     y_max: 1.0
+  #     x_min: 0.0
+  #     x_max: 1.0
 
-  # Lane 2 - West approach
-  - id: "lane_2"
-    name: "West Lane"
-    camera_url: "http://192.168.1.102:81/stream"
-    roi:
-      y_min: 0.0
-      y_max: 1.0
-      x_min: 0.0
-      x_max: 1.0
+  # # Lane 2 - West approach
+  # - id: "lane_2"
+  #   name: "West Lane"
+  #   camera_url: "http://192.168.1.102:81/stream"
+  #   roi:
+  #     y_min: 0.0
+  #     y_max: 1.0
+  #     x_min: 0.0
+  #     x_max: 1.0
 
-  # Lane 3 - North approach
-  - id: "lane_3"
-    name: "North Lane"
-    camera_url: "http://192.168.1.103:81/stream"
-    roi:
-      y_min: 0.0
-      y_max: 1.0
-      x_min: 0.0
-      x_max: 1.0
+  # # Lane 3 - North approach
+  # - id: "lane_3"
+  #   name: "North Lane"
+  #   camera_url: "http://192.168.1.103:81/stream"
+  #   roi:
+  #     y_min: 0.0
+  #     y_max: 1.0
+  #     x_min: 0.0
+  #     x_max: 1.0
 
 # Add more lanes as needed by copying the format above
 # To use fewer lanes, just comment out or delete unwanted entries
@@ -73,3 +74,5 @@ output:
   file: "traffic_metrics.json" # PPO actor reads this file
   update_interval: 5 # Update metrics every N seconds
   display: false # Set true to show video windows
+
+max_retries: 5

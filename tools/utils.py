@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import yaml
+import time
 import sumolib
 import numpy as np
 import traci
@@ -231,12 +232,14 @@ class Logger:
         console.print(f"[dim]⏵[/dim] [italic]{text}[/italic]")
 
     @staticmethod
-    def round_banner(round_id: int, total: int, reward: float = None):
+    def round_banner(
+        round_id: int, total: int, reward: float = None, phase: str = "Training Phase"
+    ):
         title = f"ROUND {round_id}/{total}"
         if reward is not None:
             title += f" | REWARD {reward:.2f}"
 
-        console.print(Panel(title, border_style="cyan", title="Federated Phase"))
+        console.print(Panel(title, border_style="cyan", title=phase))
 
 
 def scan_topology(config):
@@ -273,7 +276,17 @@ def scan_topology(config):
 
     # Silence SUMO output while scanning
     with SilenceStdout():
-        traci.start(sumo_cmd, label=label)
+        # Try to start SUMO with retries
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                traci.start(sumo_cmd, label=label, numRetries=20)
+                break
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(2)
+
         conn = traci.getConnection(label)
 
     # Discover junction IDs from SUMO
@@ -285,8 +298,10 @@ def scan_topology(config):
         Logger.warning(
             "Junction mismatch detected! Updating config.yaml with discovered junctions."
         )
+        # The config.yaml is in the project root (one level up from /tools/)
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        config_path = os.path.join(base_dir, "config.yaml")
+        root_dir = os.path.dirname(base_dir)
+        config_path = os.path.join(root_dir, "config.yaml")
 
         # Update in-memory config
         config["system"]["controlled_junctions"] = discovered_junctions
@@ -335,8 +350,11 @@ def scan_topology(config):
 
     # Close SUMO connection
     try:
-        traci.close()
+        conn.close()
     except Exception:
-        pass
+        try:
+            traci.close()
+        except Exception:
+            pass
 
     return max_lanes, max_phases

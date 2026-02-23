@@ -6,7 +6,7 @@ import os
 import json
 
 from gymnasium import spaces
-from tools.utils import SilenceStdout, PrevTrafficState, RunningNorm, GlobalMetrics
+from tools.utils import SilenceStdout, GlobalMetrics
 from typing import Dict, Any, Optional
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
@@ -17,6 +17,7 @@ class MultiAgentSumoEnv(MultiAgentEnv):
     All agents control different junctions in a single shared SUMO simulation.
     """
 
+    # Initializes the multi agent simulation environment
     def __init__(self, config_dict: Dict[str, Any]):
         super().__init__()
 
@@ -24,7 +25,7 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         self.config = config_dict["config"]
         self.junction_ids = config_dict["junction_ids"]
         self._agent_ids = set(self.junction_ids)
-        
+
         # Check if we're in evaluation mode (override GUI and delay settings)
         self.evaluation_mode = config_dict.get("evaluation_mode", False)
 
@@ -40,10 +41,16 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         self.yellow_time = self.config.get("traffic", {}).get("yellow_time", 3)
         self.green_time = self.config.get("traffic", {}).get("green_time", 10)
 
+        # Reward Stabilization Params
+        self.reward_wait_weight = self.config["rl"].get("reward_wait_weight", 0.1)
+        self.reward_floor = self.config["rl"].get("reward_floor", -200.0)
+
         # GUI or Headless SUMO (use evaluation settings if in eval mode)
         if self.evaluation_mode:
             use_gui = self.config.get("evaluation", {}).get("gui", False)
-            self.step_delay = self.config.get("evaluation", {}).get("step_delay", 0)
+            self.step_delay = config_dict.get(
+                "step_delay", self.config.get("evaluation", {}).get("step_delay", 0)
+            )
         else:
             use_gui = self.config["sumo"]["gui"]
             self.step_delay = 0
@@ -72,39 +79,35 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             "local_steps_per_round", 1000
         )
 
-        # To store previous traffic state per agent
-        self.prev_state = PrevTrafficState()
-
-        # RunningNorm for each agent
-        self.queue_norms = {
-            aid: RunningNorm(shape=self.max_lanes) for aid in self.junction_ids
-        }
-        self.wait_norms = {
-            aid: RunningNorm(shape=self.max_lanes) for aid in self.junction_ids
-        }
+        # Static scaling divisors (replaces RunningNorm to prevent state drift)
+        self.queue_scale = 20.0  # Normalized 1.0 = 20 vehicles halting
+        self.wait_scale = 100.0  # Normalized 1.0 = 100 seconds total wait
 
         # Duration Configuration
-        duration_cfg = self.config.get("traffic", {}).get("durations", {})
-        if not isinstance(duration_cfg, dict):
-            duration_cfg = {}
-
-        d_min = duration_cfg.get("min", 10)
-        d_max = duration_cfg.get("max", 60)
-        d_step = duration_cfg.get("step", 10)
-        self.durations = list(range(d_min, d_max + 1, d_step))
+        duration_cfg = self.config.get("traffic", {}).get(
+            "durations", [10, 20, 30, 40, 50, 60]
+        )
+        if isinstance(duration_cfg, list):
+            self.durations = duration_cfg
+        else:
+            # Fallback for old dict format
+            d_min = duration_cfg.get("min", 10)
+            d_max = duration_cfg.get("max", 60)
+            d_step = duration_cfg.get("step", 10)
+            self.durations = list(range(d_min, d_max + 1, d_step))
         self.num_durations = len(self.durations)
 
-        # Track Current Phase for transitions
+        # NOTE - Track Current Phase for state
         self.current_phases = {aid: 0 for aid in self.junction_ids}
 
-        # Define Observation Space
+        # NOTE - Define Observation Space
         # Max_lanes(Queue) + Max_lanes(Wait) + Phase index
         obs_dim = (self.max_lanes * 2) + 1
         single_obs = spaces.Box(
             low=-10.0, high=10.0, shape=(obs_dim,), dtype=np.float32
         )
 
-        # Define Action Space
+        # NOTE - Define Action Space
         total_actions = self.max_phases * self.num_durations
         single_act = spaces.Discrete(total_actions)
 
@@ -121,6 +124,7 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         if os.path.exists(stats_path):
             self.load_norm_stats(stats_path)
 
+    # Resets the environment
     def reset(self, *, seed: Optional[int] = None, options: Optional[Dict] = None):
         """Reset the environment and return initial observations for all agents."""
 
@@ -145,6 +149,7 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             self.sumo_config,
             "--step-length",
             str(self.step_length),
+            "--quit-on-end",
         ]
 
         # GUI support and delay
@@ -158,6 +163,19 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         else:
             if self.config["sumo"]["gui"]:
                 cmd.extend(["--start"])
+            else:
+                # NOTE - Fast training flags (headless only)
+                # Suppress all internal SUMO logging and gridlock resolution
+                cmd.extend(
+                    [
+                        "--no-step-log",
+                        "--no-warnings",
+                        "--duration-log.disable",
+                        "--time-to-teleport",
+                        "-1",
+                        "--no-internal-links",  # skip internal lane geometry (faster)
+                    ]
+                )
 
         # Robust connection retry loop
         max_retries = 5
@@ -222,52 +240,10 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         observations = self._get_observations()
         infos = {aid: {} for aid in self.junction_ids}
 
-        # Initialize previous traffic state (before any action)
-        for aid in self.junction_ids:
-            lanes = self.junction_metadata[aid]["lanes"]
-            total_q = sum(
-                self.conn.lane.getLastStepHaltingNumber(lane) for lane in lanes
-            )
-            total_w = sum(self.conn.lane.getWaitingTime(lane) for lane in lanes)
-            self.prev_state.set(aid, total_q, total_w)
-
         # Return
         return observations, infos
 
-    def save_norm_stats(self, path: str):
-        """Save RunningNorm stats for all agents."""
-        stats = {}
-        for aid in self.junction_ids:
-            stats[aid] = {
-                "queue": self.queue_norms[aid].get_state(),
-                "wait": self.wait_norms[aid].get_state(),
-            }
-
-        # Convert numpy arrays to lists for JSON serialization
-        def default_serializer(obj):
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
-            return obj
-
-        with open(path, "w") as f:
-            json.dump(stats, f, default=default_serializer, indent=2)
-        print(f"Normalization stats saved to {path}")
-
-    def load_norm_stats(self, path: str):
-        """Load RunningNorm stats for all agents."""
-        if not os.path.exists(path):
-            return
-
-        with open(path, "r") as f:
-            stats = json.load(f)
-
-        for aid, s in stats.items():
-            if aid in self.queue_norms:
-                self.queue_norms[aid].set_state(s["queue"])
-            if aid in self.wait_norms:
-                self.wait_norms[aid].set_state(s["wait"])
-        print(f"Normalization stats loaded from {path}")
-
+    # Applies actions of the agents to the environment
     def step(self, action_dict: Dict[str, int]):
         """Execute actions for all agents simultaneously."""
 
@@ -299,6 +275,8 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             # Revised Action Decoding:
             # action = (green_idx_local * num_durations) + dur_idx
             # This ensures even duration distribution across self.durations (e.g., [10, 20, ..., 60])
+
+            # NOTE - Action decoding
             dur_idx = action % self.num_durations
             green_idx_local = (action // self.num_durations) % num_g
 
@@ -325,8 +303,9 @@ class MultiAgentSumoEnv(MultiAgentEnv):
                     y_idx = (curr_idx + 1) % len(meta["logic"].phases)
                     self.conn.trafficlight.setPhase(aid, y_idx)
 
-            # 3. Apply yellow phase.
-            for _ in range(self.yellow_time):
+            # 3. Apply yellow phase (scaled by step_length)
+            num_yellow_steps = max(1, int(self.yellow_time / self.step_length))
+            for _ in range(num_yellow_steps):
                 self.conn.simulationStep()
                 self.steps_counter += 1
 
@@ -334,41 +313,72 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         for aid in self.junction_ids:
             target_idx = agent_actions[aid]["green"]
             # SUMO now switches the light for this junction to the agent's chosen green phase.
+
+            # NOTE - Change phase in sumo
             self.conn.trafficlight.setPhase(aid, target_idx)
             # Update internal state
             self.current_phases[aid] = target_idx
 
-        # Step 5: Run Simulation
+        # Step 5: Run Simulation for calculated duration
         max_duration = max(a["duration"] for a in agent_actions.values())
-        rewards = {aid: 0.0 for aid in self.junction_ids}
-        infos = {aid: {} for aid in self.junction_ids}
+        # num_sim_steps = duration / step_length (e.g. 30s / 10s = 3 steps)
+        num_sim_steps = max(1, int(max_duration / self.step_length))
 
-        for _ in range(max_duration):
+        rewards = {aid: 0.0 for aid in self.junction_ids}
+        infos = {
+            aid: {"step_queue": 0.0, "step_wait": 0.0} for aid in self.junction_ids
+        }
+        step_counts = {aid: 0 for aid in self.junction_ids}
+
+        for _ in range(num_sim_steps):
             if self.conn.simulation.getMinExpectedNumber() <= 0:
                 break
             self.conn.simulationStep()
             self.steps_counter += 1
 
-        # Step 6: Compute reward using PrevTrafficState
+            # Accumulate rewards and track metrics at EVERY simulation step
+            for aid in self.junction_ids:
+                lanes = self.junction_metadata[aid]["lanes"]
+                try:
+                    total_q = sum(
+                        self.conn.lane.getLastStepHaltingNumber(ln) for ln in lanes
+                    )
+                    total_w = sum(self.conn.lane.getWaitingTime(ln) for ln in lanes)
+                except (
+                    traci.exceptions.FatalTraCIError,
+                    traci.exceptions.TraCIException,
+                ):
+                    # Connection lost - mark simulation as inactive and return
+                    self.sim_active = False
+                    return {}, {}, {"__all__": True}, {"__all__": True}, {}
+
+                # Penalize halting and waiting (Weighted)
+                # total_w is cumulative and can explode, so we weight it down.
+                step_reward = -(total_q + self.reward_wait_weight * total_w) / len(
+                    lanes
+                )
+                rewards[aid] += step_reward
+
+                # Accumulate for logs
+                infos[aid]["step_queue"] = infos[aid].get("step_queue", 0) + total_q
+                infos[aid]["step_wait"] = infos[aid].get("step_wait", 0) + total_w
+                step_counts[aid] += 1
+
+        # Step 6: Finalize rewards and info (Average over duration)
         for aid in self.junction_ids:
-            lanes = self.junction_metadata[aid]["lanes"]
+            if step_counts[aid] > 0:
+                rewards[aid] /= step_counts[aid]
 
-            total_q = sum(self.conn.lane.getLastStepHaltingNumber(ln) for ln in lanes)
-            total_w = sum(self.conn.lane.getWaitingTime(ln) for ln in lanes)
+                # Apply Reward Floor to prevent extreme spikes
+                rewards[aid] = max(self.reward_floor, rewards[aid])
 
-            # Average negative penalty per lane (stable magnitude)
-            # Dividing by len(lanes) makes reward invariant to junction size
-            rewards[aid] = -1.0 * (total_q + total_w) / len(lanes)
-
-            # Update previous state for next step
-            self.prev_state.set(aid, total_q, total_w)
-
-            # Track info for logging
-            infos[aid]["step_queue"] = total_q
-            infos[aid]["step_wait"] = total_w
+                infos[aid]["step_queue"] /= step_counts[aid]
+                infos[aid]["step_wait"] /= step_counts[aid]
 
             # Update global metrics for real-time logging
-            GlobalMetrics.update(aid, rewards[aid], total_q, total_w)
+            GlobalMetrics.update(
+                aid, rewards[aid], infos[aid]["step_queue"], infos[aid]["step_wait"]
+            )
 
         # Step 7: Observations & Done Flags
         observations = self._get_observations()
@@ -384,13 +394,14 @@ class MultiAgentSumoEnv(MultiAgentEnv):
 
         return observations, rewards, terminateds, truncateds, infos
 
+    # Calculates current state observation from environment
     def _get_observations(self) -> Dict[str, np.ndarray]:
         observations = {}
         for agent_id in self.junction_ids:
             metadata = self.junction_metadata[agent_id]
             lanes = metadata["lanes"]
 
-            # Get raw traffic values
+            # NOTE - Reading Traffic values from sumo for state calculation.
             queues = [self.conn.lane.getLastStepHaltingNumber(ln) for ln in lanes]
             waits = [self.conn.lane.getWaitingTime(ln) for ln in lanes]
 
@@ -398,13 +409,9 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             q_padded = np.array(queues + [0.0] * (self.max_lanes - len(queues)))
             w_padded = np.array(waits + [0.0] * (self.max_lanes - len(waits)))
 
-            # Normalize using the padded arrays
-            queues_norm = self.queue_norms[agent_id].normalize(q_padded)
-            waits_norm = self.wait_norms[agent_id].normalize(w_padded)
-
-            # Update stats
-            self.queue_norms[agent_id].update(q_padded)
-            self.wait_norms[agent_id].update(w_padded)
+            # Static Scaling (semantics stay consistent across rounds)
+            queues_norm = q_padded / self.queue_scale
+            waits_norm = w_padded / self.wait_scale
 
             # Clip values to ensure they stay within bounds [-10, 10]
             queues_norm = np.clip(queues_norm, -10.0, 10.0)
@@ -414,7 +421,7 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             # print(f"Agent {agent_id} State | Raw Queues: {queues} | Raw Waits: {waits} | Current Phase: {phase}")
             phase_norm = phase / self.max_phases
 
-            # observation vector
+            # NOTE - Normalized observation vector
             observations[agent_id] = np.array(
                 list(queues_norm) + list(waits_norm) + [phase_norm],
                 dtype=np.float32,
@@ -426,6 +433,20 @@ class MultiAgentSumoEnv(MultiAgentEnv):
 
         return observations
 
+    # Save scaling factors (replaces RunningNorm stats)
+    def save_norm_stats(self, path: str):
+        """Save scaling factors."""
+        stats = {"queue_scale": self.queue_scale, "wait_scale": self.wait_scale}
+
+        with open(path, "w") as f:
+            json.dump(stats, f, indent=2)
+
+    # Logic for static scaling is hardcoded, but we keep the method for consistency
+    def load_norm_stats(self, path: str):
+        """Stub for loading normalization if needed in future."""
+        pass
+
+    # Close the environment
     def close(self):
         """Cleanly close the SUMO simulation."""
 
