@@ -55,6 +55,7 @@ def set_style():
 def plot_training(
     log_file="logs/training_logs.json",
     output_dir="plots",
+    agent_name=None,
     algo_name="Traffic RL",
     sma_window=5,
 ):
@@ -63,6 +64,8 @@ def plot_training(
         print(f"Error: {log_file} not found.")
         return
 
+    if agent_name:
+        output_dir = os.path.join(output_dir, agent_name)
     output_dir = os.path.join(output_dir, "train")
     ensure_dir(output_dir)
 
@@ -165,6 +168,7 @@ def plot_training(
 def plot_evaluation(
     log_file="logs/evaluation_logs.json",
     output_dir="plots",
+    agent_name=None,
     algo_name="CF-MADRL",
     model_name="cfmadrl",
 ):
@@ -173,6 +177,8 @@ def plot_evaluation(
         print(f"Error: {log_file} not found.")
         return
 
+    if agent_name:
+        output_dir = os.path.join(output_dir, agent_name)
     output_dir = os.path.join(output_dir, "eval")
     ensure_dir(output_dir)
 
@@ -275,12 +281,14 @@ def plot_evaluation(
 # ==========================================================
 # Cluster Evolution
 # ==========================================================
-def plot_clusters(log_file="logs/training_logs.json", output_dir="plots"):
+def plot_clusters(log_file="logs/training_logs.json", output_dir="plots", agent_name=None):
 
     if not os.path.exists(log_file):
         print(f"Error: {log_file} not found.")
         return
 
+    if agent_name:
+        output_dir = os.path.join(output_dir, agent_name)
     output_dir = os.path.join(output_dir, "train")
     ensure_dir(output_dir)
 
@@ -333,6 +341,140 @@ def plot_clusters(log_file="logs/training_logs.json", output_dir="plots"):
 
 
 # ==========================================================
+# Combined Evaluation (All Models)
+# ==========================================================
+def plot_all_models_evaluation(
+    logs_dir="logs",
+    output_dir="plots",
+    model_files=None,
+):
+
+    if model_files is None:
+        model_files = {
+            "cfmadrl": ("CF-MADRL", "evaluation_logs.json"),
+            "qtable": ("Q-Table", "evaluation_logs_qtable.json"),
+            "dqn": ("DQN", "evaluation_logs_dqn.json"),
+        }
+
+    records = []
+    fixed = None
+
+    for model_key, (algo_name, filename) in model_files.items():
+        log_path = os.path.join(logs_dir, filename)
+        if not os.path.exists(log_path):
+            print(f"Warning: {log_path} not found. Skipping {algo_name}.")
+            continue
+
+        try:
+            with open(log_path, "r") as f:
+                data = json.load(f)
+        except Exception:
+            print(f"Failed to read {log_path}.")
+            continue
+
+        model = data.get(model_key, {})
+        if not model:
+            print(f"No {model_key} data found in {log_path}.")
+            continue
+
+        for aid, m in model.items():
+            records.append(
+                {
+                    "Agent": aid,
+                    "Method": algo_name,
+                    "Avg Queue": np.mean(m["queues"]),
+                    "Avg Wait": np.mean(m["waits"]),
+                    "Total Cost": -np.mean(m["rewards"]),
+                }
+            )
+
+        if fixed is None and "fixed_time" in data:
+            fixed = data.get("fixed_time", {})
+
+    if fixed:
+        for aid, m in fixed.items():
+            records.append(
+                {
+                    "Agent": aid,
+                    "Method": "Fixed-Time",
+                    "Avg Queue": np.mean(m["queues"]),
+                    "Avg Wait": np.mean(m["waits"]),
+                    "Total Cost": -np.mean(m["rewards"]),
+                }
+            )
+
+    if not records:
+        print("No combined evaluation data available.")
+        return
+
+    output_dir = os.path.join(output_dir, "eval")
+    ensure_dir(output_dir)
+
+    df = pd.DataFrame(records)
+    df["Agent Short"] = df["Agent"].apply(lambda x: x[:12] + ".." if len(x) > 12 else x)
+
+    method_order = [m[0] for m in model_files.values()] + ["Fixed-Time"]
+    method_order = [m for m in method_order if m in df["Method"].unique()]
+    df["Method"] = pd.Categorical(df["Method"], categories=method_order, ordered=True)
+
+    palette = {
+        "CF-MADRL": "#2ecc71",
+        "Q-Table": "#9b59b6",
+        "DQN": "#3498db",
+        "Fixed-Time": "#e74c3c",
+    }
+
+    def create_bar_plot(metric_col, title, ylabel, filename):
+
+        plt.figure()
+        ax = sns.barplot(
+            data=df,
+            x="Agent Short",
+            y=metric_col,
+            hue="Method",
+            hue_order=method_order,
+            palette=palette,
+        )
+
+        for container in ax.containers:
+            ax.bar_label(container, fmt="%.2f", padding=3, fontsize=9)
+
+        plt.title(title)
+        plt.xlabel("Agent")
+        plt.ylabel(ylabel)
+        plt.xticks(rotation=40)
+        plt.tight_layout()
+
+        save_path = os.path.join(output_dir, filename)
+        plt.savefig(save_path)
+        plt.close()
+        print(f"Saved: {save_path}")
+
+    create_bar_plot(
+        "Total Cost",
+        "Total Traffic Cost Comparison (Lower is Better)",
+        "Average Weighted Cost",
+        "plot_eval_cost_comparison.png",
+    )
+
+    create_bar_plot(
+        "Avg Queue",
+        "Average Queue Length Comparison (Lower is Better)",
+        "Average Queue Length",
+        "plot_eval_queue_comparison.png",
+    )
+
+    create_bar_plot(
+        "Avg Wait",
+        "Average Waiting Time Comparison (Lower is Better)",
+        "Average Waiting Time (seconds)",
+        "plot_eval_wait_comparison.png",
+    )
+
+    print("\nCombined evaluation plots generated successfully.")
+
+
+# ==========================================================
 # Main
 # ==========================================================
 if __name__ == "__main__":
@@ -351,12 +493,95 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output", type=str, default="plots", help="Directory to save plots"
     )
+    parser.add_argument(
+        "--agent",
+        type=str,
+        default=None,
+        help="Agent name to create a subfolder inside plots",
+    )
 
     args = parser.parse_args()
 
-    if args.type in ["train", "all"]:
-        plot_training(output_dir=args.output)
-        plot_clusters(output_dir=args.output)
+    agents_all = ["cfmadrl", "qtable", "dqn"]
+    agent_meta = {
+        "cfmadrl": {
+            "algo_name": "CF-MADRL",
+            "model_name": "cfmadrl",
+            "train_log": "logs/training_logs.json",
+            "eval_log": "logs/evaluation_logs.json",
+        },
+        "qtable": {
+            "algo_name": "Q-Table",
+            "model_name": "qtable",
+            "train_log": "logs/qtable/training_logs.json",
+            "eval_log": "logs/evaluation_logs_qtable.json",
+        },
+        "dqn": {
+            "algo_name": "DQN",
+            "model_name": "dqn",
+            "train_log": "logs/dqn/training_logs.json",
+            "eval_log": "logs/evaluation_logs_dqn.json",
+        },
+    }
+    if args.agent == "all":
+        combined_dir = os.path.join(args.output, "combined")
+        if args.type in ["train", "all"]:
+            for agent in agents_all:
+                meta = agent_meta[agent]
+                plot_training(
+                    log_file=meta["train_log"],
+                    output_dir=args.output,
+                    agent_name=agent,
+                    algo_name=meta["algo_name"],
+                )
+                if agent == "cfmadrl":
+                    plot_clusters(
+                        log_file=meta["train_log"],
+                        output_dir=args.output,
+                        agent_name=agent,
+                    )
 
-    if args.type in ["eval", "all"]:
-        plot_evaluation(output_dir=args.output)
+        if args.type in ["eval", "all"]:
+            plot_all_models_evaluation(logs_dir="logs", output_dir=combined_dir)
+            for agent in agents_all:
+                meta = agent_meta[agent]
+                plot_evaluation(
+                    log_file=meta["eval_log"],
+                    output_dir=args.output,
+                    agent_name=agent,
+                    algo_name=meta["algo_name"],
+                    model_name=meta["model_name"],
+                )
+    else:
+        if args.type in ["train", "all"]:
+            if args.agent in agent_meta:
+                meta = agent_meta[args.agent]
+                plot_training(
+                    log_file=meta["train_log"],
+                    output_dir=args.output,
+                    agent_name=args.agent,
+                    algo_name=meta["algo_name"],
+                )
+                if args.agent == "cfmadrl":
+                    plot_clusters(
+                        log_file=meta["train_log"],
+                        output_dir=args.output,
+                        agent_name=args.agent,
+                    )
+            else:
+                plot_training(output_dir=args.output, agent_name=args.agent)
+                if args.agent == "cfmadrl":
+                    plot_clusters(output_dir=args.output, agent_name=args.agent)
+
+        if args.type in ["eval", "all"]:
+            if args.agent in agent_meta:
+                meta = agent_meta[args.agent]
+                plot_evaluation(
+                    log_file=meta["eval_log"],
+                    output_dir=args.output,
+                    agent_name=args.agent,
+                    algo_name=meta["algo_name"],
+                    model_name=meta["model_name"],
+                )
+            else:
+                plot_evaluation(output_dir=args.output, agent_name=args.agent)

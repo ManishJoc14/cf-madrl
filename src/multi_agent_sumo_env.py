@@ -73,6 +73,8 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         # Environment memory
         self.junction_metadata = {}
         self.steps_counter = 0
+        self.outgoing_lanes_by_junction = {}
+        self.incoming_lane_sources_by_junction = {}
 
         # Max Steps Logic
         self.max_steps = self.config.get("training", {}).get(
@@ -101,8 +103,9 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         self.current_phases = {aid: 0 for aid in self.junction_ids}
 
         # NOTE - Define Observation Space
-        # Max_lanes(Queue) + Max_lanes(Wait) + Phase index
-        obs_dim = (self.max_lanes * 2) + 1
+        # Max_lanes(Queue) + Max_lanes(Wait) + Max_lanes(SharedQueue)
+        # + Max_lanes(SharedWait) + Phase index
+        obs_dim = (self.max_lanes * 4) + 1
         single_obs = spaces.Box(
             low=-10.0, high=10.0, shape=(obs_dim,), dtype=np.float32
         )
@@ -235,6 +238,33 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             start_p = green_phases[0] if green_phases else 0
             self.conn.trafficlight.setPhase(j_id, start_p)
             self.current_phases[j_id] = start_p
+
+        # Build outgoing-lane map for sharing traffic metadata
+        incoming_lane_sources = {}
+        for j_id in self.junction_ids:
+            outgoing = set()
+            try:
+                controlled_links = self.conn.trafficlight.getControlledLinks(j_id)
+            except Exception:
+                controlled_links = []
+            for link_group in controlled_links:
+                for link in link_group:
+                    if not link or len(link) < 2:
+                        continue
+                    to_lane = link[1]
+                    if to_lane:
+                        outgoing.add(to_lane)
+            self.outgoing_lanes_by_junction[j_id] = sorted(outgoing)
+            for ln in outgoing:
+                incoming_lane_sources.setdefault(ln, set()).add(j_id)
+
+        self.incoming_lane_sources_by_junction = {}
+        for j_id in self.junction_ids:
+            lanes = self.junction_metadata[j_id]["lanes"]
+            self.incoming_lane_sources_by_junction[j_id] = [
+                sorted([s for s in incoming_lane_sources.get(ln, []) if s != j_id])
+                for ln in lanes
+            ]
 
         # Get initial observations
         observations = self._get_observations()
@@ -405,17 +435,38 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             queues = [self.conn.lane.getLastStepHaltingNumber(ln) for ln in lanes]
             waits = [self.conn.lane.getWaitingTime(ln) for ln in lanes]
 
+            shared_sources = self.incoming_lane_sources_by_junction.get(agent_id, [])
+            shared_queues = []
+            shared_waits = []
+            for idx, ln in enumerate(lanes):
+                if idx < len(shared_sources) and shared_sources[idx]:
+                    shared_queues.append(self.conn.lane.getLastStepHaltingNumber(ln))
+                    shared_waits.append(self.conn.lane.getWaitingTime(ln))
+                else:
+                    shared_queues.append(0.0)
+                    shared_waits.append(0.0)
+
             # Pad to max_lanes BEFORE normalization so shapes match RunningNorm(max_lanes)
             q_padded = np.array(queues + [0.0] * (self.max_lanes - len(queues)))
             w_padded = np.array(waits + [0.0] * (self.max_lanes - len(waits)))
+            sq_padded = np.array(
+                shared_queues + [0.0] * (self.max_lanes - len(shared_queues))
+            )
+            sw_padded = np.array(
+                shared_waits + [0.0] * (self.max_lanes - len(shared_waits))
+            )
 
             # Static Scaling (semantics stay consistent across rounds)
             queues_norm = q_padded / self.queue_scale
             waits_norm = w_padded / self.wait_scale
+            shared_queues_norm = sq_padded / self.queue_scale
+            shared_waits_norm = sw_padded / self.wait_scale
 
             # Clip values to ensure they stay within bounds [-10, 10]
             queues_norm = np.clip(queues_norm, -10.0, 10.0)
             waits_norm = np.clip(waits_norm, -10.0, 10.0)
+            shared_queues_norm = np.clip(shared_queues_norm, -10.0, 10.0)
+            shared_waits_norm = np.clip(shared_waits_norm, -10.0, 10.0)
 
             phase = self.conn.trafficlight.getPhase(agent_id)
             # print(f"Agent {agent_id} State | Raw Queues: {queues} | Raw Waits: {waits} | Current Phase: {phase}")
@@ -423,13 +474,19 @@ class MultiAgentSumoEnv(MultiAgentEnv):
 
             # NOTE - Normalized observation vector
             observations[agent_id] = np.array(
-                list(queues_norm) + list(waits_norm) + [phase_norm],
+                list(queues_norm)
+                + list(waits_norm)
+                + list(shared_queues_norm)
+                + list(shared_waits_norm)
+                + [phase_norm],
                 dtype=np.float32,
             )
 
             # So structure is:
-            # Max_lanes(Queue) + Max_lanes(Wait) + Phase index
-            # [ lane1_q, lane2_q, ..., q_pad, lane1_w, lane2_w, ..., W_PAD, current_phase ]
+            # Max_lanes(Queue) + Max_lanes(Wait) + Max_lanes(SharedQueue)
+            # + Max_lanes(SharedWait) + Phase index
+            # [ lane1_q, ..., q_pad, lane1_w, ..., w_pad,
+            #   lane1_sq, ..., sq_pad, lane1_sw, ..., sw_pad, current_phase ]
 
         return observations
 

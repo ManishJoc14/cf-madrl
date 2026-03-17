@@ -19,8 +19,7 @@ lanes:
   # Lane 0 - South approach
   - id: "lane_0"
     name: "South Lane"
-    # camera_url: "http://192.168.101.11:8080/video"
-    camera_url: "http://10.218.234.248"
+    camera_url: "http://10.250.191.222:8080/video"
     roi:
       y_min: 0.0 # Detection zone: full height
       y_max: 1.0 # Detection zone: full height
@@ -30,7 +29,7 @@ lanes:
   # # Lane 1 - East approach
   # - id: "lane_1"
   #   name: "East Lane"
-  #   camera_url: "http://192.168.1.101:81/stream"
+  #   camera_url: "http://192.0.0.4:8080/video"
   #   roi:
   #     y_min: 0.0
   #     y_max: 1.0

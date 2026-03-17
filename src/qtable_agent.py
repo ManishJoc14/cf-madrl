@@ -1,7 +1,7 @@
 """
 Q-Table agent for multi-agent traffic signal control.
 
-State: discretized queue counts per lane (4 bins) + current phase bin.
+State: discretized queue/wait per lane + shared outgoing-lane queue/wait + phase bin.
 Action: integer index into (green_phase × duration) combinations.
 """
 
@@ -67,23 +67,30 @@ class QTableAgent:
         """
         Convert a continuous observation vector to a discrete hashable state key.
 
-        obs layout: [queue_norm × max_lanes, wait_norm × max_lanes, phase_norm]
-        We discretize queue values + waiting times + phase.
+        obs layout:
+        [queue_norm × max_lanes, wait_norm × max_lanes,
+         shared_queue_norm × max_lanes, shared_wait_norm × max_lanes, phase_norm]
+        We discretize queue values + waiting times + shared traffic + phase.
         """
         n = len(obs)
-        # Structure is: Max_lanes(Queue) + Max_lanes(Wait) + Phase index
-        max_lanes = (n - 1) // 2
+        # Structure is: Max_lanes(Queue) + Max_lanes(Wait)
+        # + Max_lanes(SharedQueue) + Max_lanes(SharedWait) + Phase index
+        max_lanes = (n - 1) // 4
 
         queues = obs[:max_lanes]
         waits = obs[max_lanes : 2 * max_lanes]
+        shared_queues = obs[2 * max_lanes : 3 * max_lanes]
+        shared_waits = obs[3 * max_lanes : 4 * max_lanes]
         phase_norm = obs[-1]
 
         # Discretize everything
         q_bins = tuple(self._discretize(q) for q in queues)
         w_bins = tuple(self._discretize(w) for w in waits)
+        sq_bins = tuple(self._discretize(q) for q in shared_queues)
+        sw_bins = tuple(self._discretize(w) for w in shared_waits)
         phase_bin = int(round(phase_norm * 10))  # phase_norm → integer bucket
 
-        return q_bins + w_bins + (phase_bin,)
+        return q_bins + w_bins + sq_bins + sw_bins + (phase_bin,)
 
     def _get_q(self, state_key: tuple) -> np.ndarray:
         """Return Q-values for a state, initializing to zeros if unseen."""
