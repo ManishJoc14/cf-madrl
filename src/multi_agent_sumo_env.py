@@ -39,11 +39,13 @@ class MultiAgentSumoEnv(MultiAgentEnv):
 
         # Traffic Light Timings
         self.yellow_time = self.config.get("traffic", {}).get("yellow_time", 3)
-        self.green_time = self.config.get("traffic", {}).get("green_time", 10)
+        self.green_time = self.config.get("traffic", {}).get("green_time", 42)
 
         # Reward Stabilization Params
         self.reward_wait_weight = self.config["rl"].get("reward_wait_weight", 0.1)
         self.reward_floor = self.config["rl"].get("reward_floor", -200.0)
+        # Shared state weighting (to prevent shared signals from dominating)
+        self.shared_state_weight = self.config["rl"].get("shared_state_weight", 0.5)
 
         # GUI or Headless SUMO (use evaluation settings if in eval mode)
         if self.evaluation_mode:
@@ -524,8 +526,8 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             # Static Scaling (semantics stay consistent across rounds)
             queues_norm = q_padded / self.queue_scale
             waits_norm = w_padded / self.wait_scale
-            shared_queues_norm = sq_padded / self.queue_scale
-            shared_waits_norm = sw_padded / self.wait_scale
+            shared_queues_norm = (sq_padded / self.queue_scale) * self.shared_state_weight
+            shared_waits_norm = (sw_padded / self.wait_scale) * self.shared_state_weight
 
             # Clip values to ensure they stay within bounds [-10, 10]
             queues_norm = np.clip(queues_norm, -10.0, 10.0)
