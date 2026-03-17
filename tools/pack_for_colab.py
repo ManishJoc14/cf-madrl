@@ -7,6 +7,7 @@ def pack_project():
     # Exclude these directories
     excludes = {
         ".venv",
+        "venv",
         "venv__pycache__",
         ".git",
         ".vscode",
@@ -14,6 +15,9 @@ def pack_project():
         "CF-MADRL-YOLO",
         "learn",
         "pi",
+        "SRS",
+        "saved_models",
+        "logs",
     }
 
     with zipfile.ZipFile(output_filename, "w", zipfile.ZIP_DEFLATED) as zipf:

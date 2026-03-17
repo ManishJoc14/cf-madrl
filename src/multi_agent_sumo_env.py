@@ -75,6 +75,11 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         self.steps_counter = 0
         self.outgoing_lanes_by_junction = {}
         self.incoming_lane_sources_by_junction = {}
+        self.source_target_outgoing_lanes = {}
+        self.source_outgoing_lanes_all = {}
+        self.latest_junction_metrics = {
+            aid: {"queue": 0.0, "wait": 0.0} for aid in self.junction_ids
+        }
 
         # Max Steps Logic
         self.max_steps = self.config.get("training", {}).get(
@@ -240,9 +245,16 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             self.current_phases[j_id] = start_p
 
         # Build outgoing-lane map for sharing traffic metadata
+        incoming_lane_to_junction = {}
+        for j_id in self.junction_ids:
+            for ln in self.junction_metadata[j_id]["lanes"]:
+                incoming_lane_to_junction[ln] = j_id
+
         incoming_lane_sources = {}
         for j_id in self.junction_ids:
             outgoing = set()
+            outgoing_all = set()
+            per_target = {}
             try:
                 controlled_links = self.conn.trafficlight.getControlledLinks(j_id)
             except Exception:
@@ -253,8 +265,16 @@ class MultiAgentSumoEnv(MultiAgentEnv):
                         continue
                     to_lane = link[1]
                     if to_lane:
+                        outgoing_all.add(to_lane)
                         outgoing.add(to_lane)
+                        target = incoming_lane_to_junction.get(to_lane)
+                        if target:
+                            per_target.setdefault(target, set()).add(to_lane)
             self.outgoing_lanes_by_junction[j_id] = sorted(outgoing)
+            self.source_outgoing_lanes_all[j_id] = sorted(outgoing_all)
+            self.source_target_outgoing_lanes[j_id] = {
+                tgt: sorted(list(lns)) for tgt, lns in per_target.items()
+            }
             for ln in outgoing:
                 incoming_lane_sources.setdefault(ln, set()).add(j_id)
 
@@ -265,6 +285,10 @@ class MultiAgentSumoEnv(MultiAgentEnv):
                 sorted([s for s in incoming_lane_sources.get(ln, []) if s != j_id])
                 for ln in lanes
             ]
+
+        self.latest_junction_metrics = {
+            aid: {"queue": 0.0, "wait": 0.0} for aid in self.junction_ids
+        }
 
         # Get initial observations
         observations = self._get_observations()
@@ -405,6 +429,11 @@ class MultiAgentSumoEnv(MultiAgentEnv):
                 infos[aid]["step_queue"] /= step_counts[aid]
                 infos[aid]["step_wait"] /= step_counts[aid]
 
+            self.latest_junction_metrics[aid] = {
+                "queue": float(infos[aid]["step_queue"]),
+                "wait": float(infos[aid]["step_wait"]),
+            }
+
             # Update global metrics for real-time logging
             GlobalMetrics.update(
                 aid, rewards[aid], infos[aid]["step_queue"], infos[aid]["step_wait"]
@@ -425,8 +454,35 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         return observations, rewards, terminateds, truncateds, infos
 
     # Calculates current state observation from environment
+    def _compute_turn_ratios(self) -> Dict[str, Dict[str, float]]:
+        ratios = {}
+        for src, all_out_lanes in self.source_outgoing_lanes_all.items():
+            total = 0.0
+            lane_counts = {}
+            for ln in all_out_lanes:
+                try:
+                    cnt = self.conn.lane.getLastStepVehicleNumber(ln)
+                except Exception:
+                    cnt = 0.0
+                lane_counts[ln] = float(cnt)
+                total += float(cnt)
+
+            targets = self.source_target_outgoing_lanes.get(src, {})
+            if total > 0.0:
+                ratios[src] = {
+                    tgt: sum(lane_counts.get(ln, 0.0) for ln in lns) / total
+                    for tgt, lns in targets.items()
+                }
+            else:
+                num_targets = max(len(targets), 1)
+                ratios[src] = {
+                    tgt: 1.0 / num_targets for tgt in targets.keys()
+                }
+        return ratios
+
     def _get_observations(self) -> Dict[str, np.ndarray]:
         observations = {}
+        turn_ratios = self._compute_turn_ratios()
         for agent_id in self.junction_ids:
             metadata = self.junction_metadata[agent_id]
             lanes = metadata["lanes"]
@@ -440,8 +496,17 @@ class MultiAgentSumoEnv(MultiAgentEnv):
             shared_waits = []
             for idx, ln in enumerate(lanes):
                 if idx < len(shared_sources) and shared_sources[idx]:
-                    shared_queues.append(self.conn.lane.getLastStepHaltingNumber(ln))
-                    shared_waits.append(self.conn.lane.getWaitingTime(ln))
+                    weighted_q = 0.0
+                    weighted_w = 0.0
+                    for src in shared_sources[idx]:
+                        metrics = self.latest_junction_metrics.get(
+                            src, {"queue": 0.0, "wait": 0.0}
+                        )
+                        w = turn_ratios.get(src, {}).get(agent_id, 0.0)
+                        weighted_q += metrics["queue"] * w
+                        weighted_w += metrics["wait"] * w
+                    shared_queues.append(float(weighted_q))
+                    shared_waits.append(float(weighted_w))
                 else:
                     shared_queues.append(0.0)
                     shared_waits.append(0.0)
