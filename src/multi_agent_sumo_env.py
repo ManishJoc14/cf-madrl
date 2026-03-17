@@ -87,8 +87,8 @@ class MultiAgentSumoEnv(MultiAgentEnv):
         )
 
         # Static scaling divisors (replaces RunningNorm to prevent state drift)
-        self.queue_scale = 15.0  # Normalized 1.0 = 20 vehicles halting
-        self.wait_scale = 300.0  # Normalized 1.0 = 100 seconds total wait
+        self.queue_scale = 15.0  # Normalized 1.0 = 15 vehicles halting
+        self.wait_scale = 300.0  # Normalized 1.0 = 300 seconds total wait
 
         # Duration Configuration
         duration_cfg = self.config.get("traffic", {}).get(
