@@ -17,7 +17,8 @@ def evaluate_qtable(config):
     Logger.header("Q-Table Agent Evaluation")
 
     model_dir = "saved_models/qtable"
-    log_dir = config["system"].get("log_dir", "logs")
+    base_log_dir = config["system"].get("log_dir", "logs")
+    log_dir = os.path.join(base_log_dir, "qtable")
     plot_dir = "plots/qtable"
     ensure_dir(plot_dir)
 
@@ -112,7 +113,7 @@ def evaluate_qtable(config):
     }
 
     ensure_dir(log_dir)
-    eval_log = os.path.join(log_dir, "evaluation_logs_qtable.json")
+    eval_log = os.path.join(log_dir, "evaluation_logs.json")
 
     with open(eval_log, "w") as f:
         json.dump(log_data, f)

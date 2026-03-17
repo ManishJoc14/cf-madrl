@@ -20,7 +20,8 @@ def evaluate_dqn(config):
     system_cfg = config["system"]
 
     model_dir = "saved_models/dqn"
-    log_dir = system_cfg["log_dir"]
+    base_log_dir = system_cfg.get("log_dir", "logs")
+    log_dir = os.path.join(base_log_dir, "dqn")
     plot_dir = "plots/dqn"
 
     ensure_dir(plot_dir)
@@ -108,7 +109,7 @@ def evaluate_dqn(config):
     }
 
     ensure_dir(log_dir)
-    eval_log = os.path.join(log_dir, "evaluation_logs_dqn.json")
+    eval_log = os.path.join(log_dir, "evaluation_logs.json")
 
     with open(eval_log, "w") as f:
         json.dump(log_data, f)

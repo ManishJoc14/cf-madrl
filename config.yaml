@@ -22,9 +22,9 @@ rl:
   gae_lambda: 0.95
 
   # Batch sizes
-  train_batch_size: 1024
-  sgd_minibatch_size: 128   
-  num_sgd_iter: 15          
+  train_batch_size: 256
+  sgd_minibatch_size: 64
+  num_sgd_iter: 3
 
   clip_param: 0.2
 
@@ -71,7 +71,7 @@ traffic:
 
 training:
   federated_rounds: 300   
-  local_steps_per_round: 1000  
+  local_steps_per_round: 256
   n_clusters: 2
   save_freq: 10
   patience:
@@ -95,5 +95,9 @@ system:
   - J7
   model_save_path: saved_models/universal_models
   log_dir: logs
+  log_subdirs:
+    cfmadrl: cfmadrl
+    qtable: qtable
+    dqn: dqn
   plot_dir: plots
   silent: true

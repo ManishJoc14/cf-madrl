@@ -89,14 +89,16 @@ def evaluate_rl(config):
     env.close()
 
     # ---- Save logs ----
-    ensure_dir("logs")
+    base_log_dir = config["system"].get("log_dir", "logs")
+    log_dir = os.path.join(base_log_dir, "cfmadrl")
+    ensure_dir(log_dir)
 
     log_data = {
         "cfmadrl": metrics,
         "clearance_time": clearance_time,
     }
 
-    log_path = "logs/evaluation_logs.json"
+    log_path = os.path.join(log_dir, "evaluation_logs.json")
 
     with open(log_path, "w") as f:
         json.dump(log_data, f)

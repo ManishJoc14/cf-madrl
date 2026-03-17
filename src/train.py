@@ -34,7 +34,8 @@ def train_rllib(config, args_rounds=None):
 
     # ---- Prepare directories for models and logs ----
     model_dir = os.path.abspath(config["system"]["model_save_path"])
-    log_dir = config["system"].get("log_dir", "logs")
+    base_log_dir = config["system"].get("log_dir", "logs")
+    log_dir = os.path.join(base_log_dir, "cfmadrl")
     ensure_dir(model_dir)
     ensure_dir(log_dir)
 

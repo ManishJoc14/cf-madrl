@@ -88,15 +88,9 @@ if __name__ == "__main__":
         Logger.section(f"Launching {args.agent.upper()} Evaluation")
 
         if args.agent == "cfmadrl":
-            from src.eval import (
-                run_fixed_time_baseline,
-                evaluate_rl,
-                generate_comparison_plots,
-            )
+            from src.eval import evaluate_rl
 
-            fixed_metrics = run_fixed_time_baseline(config)
-            madrl_metrics = evaluate_rl(config)
-            generate_comparison_plots(fixed_metrics, madrl_metrics, config)
+            evaluate_rl(config)
 
         elif args.agent == "qtable":
             from src.eval_qtable import evaluate_qtable

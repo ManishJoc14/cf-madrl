@@ -6,7 +6,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from tools.utils import ensure_dir
+from utils import ensure_dir
 from matplotlib.ticker import MaxNLocator
 
 
@@ -86,6 +86,19 @@ def plot_training(
     df["round"] = df["round"].astype(int)
     df["Agent Short"] = df["agent"].apply(lambda x: x[:12] + ".." if len(x) > 12 else x)
 
+    if "mean_reward" in df.columns:
+        df["mean_cost"] = -df["mean_reward"]
+
+    y_limits = {}
+    for metric in ["mean_reward", "mean_cost", "mean_queue", "mean_wait"]:
+        if metric in df.columns:
+            y_min = float(df[metric].min())
+            y_max = float(df[metric].max())
+            if y_min == y_max:
+                y_min -= 1.0
+                y_max += 1.0
+            y_limits[metric] = (y_min, y_max)
+
     # --------------------------------------------------
     # Agent-Level Plot
     # --------------------------------------------------
@@ -106,6 +119,8 @@ def plot_training(
         plt.xlabel("Training Round")
         plt.ylabel(ylabel)
         plt.legend(title="Agent", bbox_to_anchor=(1.02, 1), loc="upper left")
+        if metric in y_limits:
+            plt.ylim(*y_limits[metric])
         plt.tight_layout()
 
         save_path = os.path.join(output_dir, filename)
@@ -114,18 +129,28 @@ def plot_training(
         print(f"Saved: {save_path}")
 
     plot_per_agent("mean_reward", "Mean Reward", "plot_training_rewards.png")
+    plot_per_agent("mean_cost", "Mean Cost", "plot_training_cost.png")
     plot_per_agent("mean_queue", "Mean Queue Length", "plot_training_queue.png")
 
     # --------------------------------------------------
     # System-Wide Averages
     # --------------------------------------------------
-    numeric_metrics = ["mean_reward", "mean_queue", "mean_wait"]
+    numeric_metrics = ["mean_reward", "mean_cost", "mean_queue", "mean_wait"]
     valid_metrics = [m for m in numeric_metrics if m in df.columns]
 
     if not valid_metrics:
         return
 
     avg_df = df.groupby("round")[valid_metrics].mean().reset_index()
+
+    avg_limits = {}
+    for metric in valid_metrics:
+        y_min = float(avg_df[metric].min())
+        y_max = float(avg_df[metric].max())
+        if y_min == y_max:
+            y_min -= 1.0
+            y_max += 1.0
+        avg_limits[metric] = (y_min, y_max)
 
     def plot_system_trend(metric, ylabel, color, filename):
 
@@ -138,6 +163,23 @@ def plot_training(
 
         plt.plot(avg_df["round"], sma, color=color, linewidth=3, label="System Trend")
 
+        if metric == "mean_cost":
+            sma_vals = sma.values
+            sma_vals = sma_vals[np.isfinite(sma_vals)]
+            if len(sma_vals) > 0:
+                min_val = float(np.min(sma_vals))
+                max_val = float(np.max(sma_vals))
+                plt.axhline(
+                    min_val,
+                    color="#7f8c8d",
+                    linestyle="--",
+                    linewidth=1.5,
+                    label="Min Cost",
+                    zorder=0,
+                )
+                plt.ylim(0, max_val)
+        elif metric in avg_limits:
+            plt.ylim(*avg_limits[metric])
         plt.title(f"{algo_name}: System {ylabel} Trend (SMA={sma_window})")
         plt.xlabel("Training Round")
         plt.ylabel(ylabel)
@@ -151,6 +193,9 @@ def plot_training(
 
     plot_system_trend(
         "mean_reward", "Mean Reward", "#2ecc71", "plot_training_avg_reward.png"
+    )
+    plot_system_trend(
+        "mean_cost", "Mean Cost", "#8e44ad", "plot_training_avg_cost.png"
     )
     plot_system_trend(
         "mean_queue", "Mean Queue Length", "#e74c3c", "plot_training_avg_queue.png"
@@ -351,9 +396,9 @@ def plot_all_models_evaluation(
 
     if model_files is None:
         model_files = {
-            "cfmadrl": ("CF-MADRL", "evaluation_logs.json"),
-            "qtable": ("Q-Table", "evaluation_logs_qtable.json"),
-            "dqn": ("DQN", "evaluation_logs_dqn.json"),
+            "cfmadrl": ("CF-MADRL", os.path.join("cfmadrl", "evaluation_logs.json")),
+            "qtable": ("Q-Table", os.path.join("qtable", "evaluation_logs.json")),
+            "dqn": ("DQN", os.path.join("dqn", "evaluation_logs.json")),
         }
 
     records = []
@@ -475,6 +520,95 @@ def plot_all_models_evaluation(
 
 
 # ==========================================================
+# Combined Training Cost (All Models)
+# ==========================================================
+def plot_all_models_training_trends(
+    logs_dir="logs",
+    output_dir="plots",
+    model_files=None,
+    sma_window=5,
+):
+
+    if model_files is None:
+        model_files = {
+            "cfmadrl": ("CF-MADRL", os.path.join("cfmadrl", "training_logs.json")),
+            "qtable": ("Q-Table", os.path.join("qtable", "training_logs.json")),
+            "dqn": ("DQN", os.path.join("dqn", "training_logs.json")),
+        }
+
+    series = {}
+    for _, (algo_name, rel_path) in model_files.items():
+        log_path = os.path.join(logs_dir, rel_path)
+        if not os.path.exists(log_path):
+            print(f"Warning: {log_path} not found. Skipping {algo_name}.")
+            continue
+        try:
+            with open(log_path, "r") as f:
+                data = json.load(f)
+        except Exception:
+            print(f"Failed to read {log_path}.")
+            continue
+
+        df = pd.DataFrame(data)
+        if df.empty or "mean_reward" not in df.columns:
+            print(f"No training data found in {log_path}.")
+            continue
+
+        df = df[df.get("status", "trained") == "trained"].copy()
+        df["round"] = df["round"].astype(int)
+        df["mean_cost"] = -df["mean_reward"]
+        avg_df = df.groupby("round")[["mean_cost", "mean_queue", "mean_wait"]].mean()
+        series[algo_name] = avg_df
+
+    if not series:
+        print("No combined training trend data available.")
+        return
+
+    output_dir = os.path.join(output_dir, "train")
+    ensure_dir(output_dir)
+
+    def plot_metric(metric, ylabel, filename, color=None, add_min_line=False):
+        plt.figure()
+        for algo_name in sorted(series.keys()):
+            s = series[algo_name][metric]
+            sma = s.rolling(window=sma_window, min_periods=1).mean()
+            plt.plot(sma.index, sma.values, label=algo_name, linewidth=2.5)
+        plt.title(f"Combined Training: {ylabel} Trend (SMA={sma_window})")
+        plt.xlabel("Training Round")
+        plt.ylabel(ylabel)
+        if add_min_line:
+            all_vals = []
+            for algo_name in series.keys():
+                s = series[algo_name][metric]
+                sma = s.rolling(window=sma_window, min_periods=1).mean()
+                all_vals.append(sma.values)
+            all_vals = np.concatenate(all_vals) if all_vals else np.array([])
+            all_vals = all_vals[np.isfinite(all_vals)]
+            if len(all_vals) > 0:
+                min_val = float(np.min(all_vals))
+                max_val = float(np.max(all_vals))
+                plt.axhline(
+                    min_val,
+                    color="#7f8c8d",
+                    linestyle="--",
+                    linewidth=1.5,
+                    label="Min Cost",
+                    zorder=0,
+                )
+                plt.ylim(0, max_val)
+        plt.legend()
+        plt.tight_layout()
+        save_path = os.path.join(output_dir, filename)
+        plt.savefig(save_path)
+        plt.close()
+        print(f"Saved: {save_path}")
+
+    plot_metric("mean_cost", "Mean Cost", "plot_training_avg_cost.png", add_min_line=True)
+    plot_metric("mean_queue", "Mean Queue Length", "plot_training_avg_queue.png")
+    plot_metric("mean_wait", "Mean Wait Time (s)", "plot_training_avg_wait.png")
+
+
+# ==========================================================
 # Main
 # ==========================================================
 if __name__ == "__main__":
@@ -499,6 +633,12 @@ if __name__ == "__main__":
         default=None,
         help="Agent name to create a subfolder inside plots",
     )
+    parser.add_argument(
+        "--logs",
+        type=str,
+        default="logs",
+        help="Logs directory to read from",
+    )
 
     args = parser.parse_args()
 
@@ -507,25 +647,26 @@ if __name__ == "__main__":
         "cfmadrl": {
             "algo_name": "CF-MADRL",
             "model_name": "cfmadrl",
-            "train_log": "logs/training_logs.json",
-            "eval_log": "logs/evaluation_logs.json",
+            "train_log": os.path.join(args.logs, "cfmadrl", "training_logs.json"),
+            "eval_log": os.path.join(args.logs, "cfmadrl", "evaluation_logs.json"),
         },
         "qtable": {
             "algo_name": "Q-Table",
             "model_name": "qtable",
-            "train_log": "logs/qtable/training_logs.json",
-            "eval_log": "logs/evaluation_logs_qtable.json",
+            "train_log": os.path.join(args.logs, "qtable", "training_logs.json"),
+            "eval_log": os.path.join(args.logs, "qtable", "evaluation_logs.json"),
         },
         "dqn": {
             "algo_name": "DQN",
             "model_name": "dqn",
-            "train_log": "logs/dqn/training_logs.json",
-            "eval_log": "logs/evaluation_logs_dqn.json",
+            "train_log": os.path.join(args.logs, "dqn", "training_logs.json"),
+            "eval_log": os.path.join(args.logs, "dqn", "evaluation_logs.json"),
         },
     }
     if args.agent == "all":
         combined_dir = os.path.join(args.output, "combined")
         if args.type in ["train", "all"]:
+            plot_all_models_training_trends(logs_dir=args.logs, output_dir=combined_dir)
             for agent in agents_all:
                 meta = agent_meta[agent]
                 plot_training(
@@ -542,7 +683,7 @@ if __name__ == "__main__":
                     )
 
         if args.type in ["eval", "all"]:
-            plot_all_models_evaluation(logs_dir="logs", output_dir=combined_dir)
+            plot_all_models_evaluation(logs_dir=args.logs, output_dir=combined_dir)
             for agent in agents_all:
                 meta = agent_meta[agent]
                 plot_evaluation(
