@@ -642,6 +642,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    if args.agent is None:
+        args.agent = "all"
+
     agents_all = ["cfmadrl", "qtable", "dqn"]
     agent_meta = {
         "cfmadrl": {
