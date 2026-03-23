@@ -1,0 +1,25 @@
+\section{Problem Definition}
+Current AI-based traffic control systems suffer from key limitations that restrict their real-world deployment:
+\begin{enumerate}[label=\roman*.]
+	\item \textbf{Privacy Risk:} Most centralized traffic control systems rely on uploading raw camera footage to cloud servers for training and decision-making. This practice raises serious privacy concerns and conflicts with data minimization principles and regulations such as GDPR.
+
+	\item \textbf{Poor Handling of Traffic Diversity:} Standard Federated Learning approaches treat all intersections as similar. In reality, traffic patterns differ significantly between busy city intersections and low-traffic suburban roads. Aggregating their models into a single global model often leads to inefficient signal control that performs poorly in both scenarios.
+
+	\item \textbf{No Cross-Junction Awareness:} Many current systems operate each signal in isolation. A junction has no direct awareness of vehicle queues at nearby intersections, which causes uncoordinated phases and unnecessary delays across the network.
+\end{enumerate}
+
+
+\section{Project Objectives}
+
+The main objectives of the project are:
+\begin{enumerate}[label=\roman*.]
+    \item Design, evaluate, and compare CF-MADRL against Q-Table, DQN, and fixed-time control in SUMO.
+    \item Enable cross-junction awareness so decisions consider nearby queues, not just local traffic.
+    \item Validate feasibility with a HIL prototype using Raspberry Pi + YOLO for vehicle detection and adaptive signal control.
+\end{enumerate}
+
+\section{Project Scope and Applications}
+
+This project designs and tests a privacy-aware adaptive traffic signal control system using Clustered Federated Multi-Agent Deep Reinforcement Learning (CF-MADRL). The key focus is cross-junction awareness, so each signal considers nearby queues instead of acting in isolation. The approach is evaluated through multi-intersection SUMO simulations and a Hardware-in-the-Loop (HIL) demonstration with a smart junction where YOLO-based detection on a Raspberry Pi drives real-time signal control via ESP32.
+
+The system targets smart traffic management, intelligent transportation systems, and controlled urban or campus road networks. The scope is limited to algorithm development and experimental validation, and does not cover legal, regulatory, or policy aspects of traffic management.

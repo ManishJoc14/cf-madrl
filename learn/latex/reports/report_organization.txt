@@ -1,0 +1,28 @@
+\section{Report Organization}
+
+This report is organized into several chapters, each focusing on a specific aspect of the project:
+
+\begin{itemize}
+    \item \textbf{Chapter 1: Introduction} -- Presents background, motivation, problem definition, objectives, and scope.
+
+    \item \textbf{Chapter 2: Literature Review} -- Summarizes prior work in adaptive traffic signal control, reinforcement learning, and federated learning.
+
+    \item \textbf{Chapter 3: Requirements} -- Lists hardware and software requirements along with key functional and non-functional needs.
+
+    \item \textbf{Chapter 4: Methodology} -- Details the CF-MADRL framework, agent design, state-action-reward formulation, and training workflow.
+
+    \item \textbf{Chapter 5: Implementation} -- Describes the simulation setup and hardware integration, including YOLO-based detection and HIL components.
+
+    \item \textbf{Chapter 6: Results and Analysis} -- Reports performance metrics and comparative results with baselines.
+
+    \item \textbf{Chapter 7: Future Enhancement} -- Discusses limitations and planned improvements.
+
+    \item \textbf{Chapter 8: Conclusion} -- Summarizes key findings and contributions.
+
+    \item \textbf{Chapter 9: Appendices} -- Contains supplementary materials and additional figures/tables.
+    
+    \item \textbf{References} -- Lists all cited works used throughout the report.
+
+\end{itemize}
+
+This organization ensures a logical flow from problem identification and motivation, through methodology, implementation, evaluation, and conclusion, providing a comprehensive understanding of the proposed traffic control system.

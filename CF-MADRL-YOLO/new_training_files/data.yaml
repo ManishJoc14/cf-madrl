@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['vehicle']
+
+roboflow:
+  workspace: manishs-workspace-fgonh
+  project: cf-madrl-vehicle
+  version: 5
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/manishs-workspace-fgonh/cf-madrl-vehicle/dataset/5

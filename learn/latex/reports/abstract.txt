@@ -1,0 +1,10 @@
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{ABSTRACT}
+
+Urban traffic congestion remains a major challenge because most traffic signals still operate on fixed schedules and cannot adapt to real-time conditions. This project proposes a Privacy-Aware Adaptive Traffic Signal Control system using Clustered Federated Multi-Agent Deep Reinforcement Learning (CF-MADRL). Each junction learns locally and communicates only model updates and metadata (not raw video), while clustering intersections with similar traffic patterns enables coordinated learning across agents. For hardware demonstration, a Raspberry Pi with a camera monitors traffic, and an Ultralytics YOLO26 nano model estimates vehicle count and waiting time. The CF-MADRL agent on the Raspberry Pi selects phase timing and sends decisions to an ESP32-S controller that drives the traffic lights and timer display.
+
+On average across the evaluated junctions, CF-MADRL reduces waiting time by about 46.6\% vs fixed-time, 21.9\% vs DQN, and 9.8\% vs Q-Table, and reduces average queue length by about 28.6\% vs fixed-time, 17.3\% vs DQN, and 12.3\% vs Q-Table. These results support the feasibility of a smart, adaptive, privacy-preserving, and communication-aware traffic management approach.
+
+\emph{Keywords: Clustering, Federated Learning, Hardware-in-the-Loop, Multi-Agent Reinforcement Learning, Privacy, Traffic Signal Control.}
+
+\clearpage

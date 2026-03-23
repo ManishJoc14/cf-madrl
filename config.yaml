@@ -71,7 +71,7 @@ traffic:
 
 training:
   federated_rounds: 300   
-  local_steps_per_round: 256
+  local_steps_per_round: 1000
   n_clusters: 2
   save_freq: 10
   patience:

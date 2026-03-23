@@ -1,0 +1,281 @@
+\chapter{IMPLEMENTATION DETAILS}
+
+\section{System Overview}
+
+CF-MADRL is a clustered federated multi-agent reinforcement learning system for adaptive traffic signal control. The implementation integrates three connected layers: (1) a SUMO-based simulation environment for training and evaluation, (2) a federated training pipeline that clusters and aggregates agent policies, and (3) a Raspberry Pi deployment stack that serves real-time phase decisions to ESP32 traffic controllers through a lightweight HTTP API. Each controlled junction is treated as an autonomous agent with its own policy, while coordination is achieved through clustered weight aggregation across junctions.
+
+The workflow is organized into three stages. In the training stage, each junction learns locally within a shared SUMO simulation and periodically uploads its weights to the federated server. In the evaluation stage, the learned policies are compared against a fixed-time baseline under the same simulation settings. In the deployment stage, the trained policy is executed on the Raspberry Pi, which receives traffic metrics from ESP32 camera feeds, runs inference, and returns the next phase and duration to the ESP32 controller. This end-to-end loop allows the same control logic to move from simulation into real hardware with minimal changes.
+
+\section{Traffic Simulation Environment}
+
+\subsection{Simulation Topology}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.9\textwidth]{img/simulation_network.png}
+\caption{SUMO network used for training and evaluation.}
+\label{fig:sumo_network}
+\end{figure}
+
+The SUMO network contains four controlled intersections (J1, J2, J5, J7). Each junction has its own traffic light program and incoming lanes, and the simulation runs as a single shared environment so that inter-junction traffic interactions can be captured in the shared state.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Junction topology (SUMO).}
+\label{tab:junction_topology}
+\begin{tabular}{|c|c|c|c|}
+\hline
+\textbf{Junction} & \textbf{Incoming Lanes} & \textbf{Total Phases} & \textbf{Green Phases} \\
+\hline
+J1 & 6 lanes & 4 phases & 2 phases \\
+J2 & 6 lanes & 4 phases & 2 phases \\
+J5 & 4 lanes & 4 phases & 2 phases \\
+J7 & 4 lanes & 4 phases & 2 phases \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Simulation Parameters}
+
+Simulation settings are defined in \texttt{config.yaml} and shared across training and evaluation. The step length defines the physics update, a gridlock timer ends episodes if vehicles stop clearing, and yellow time is enforced between phase changes. These parameters ensure stability during training and keep evaluation conditions consistent.
+
+\begin{table}[H]
+\centering
+\caption{SUMO simulation parameters.}
+\label{tab:sumo_config}
+\begin{tabular}{|l|c|l|}
+\hline
+\textbf{Parameter} & \textbf{Value} & \textbf{Description} \\
+\hline
+SUMO Physics Step & 1.0 s & Vehicle physics step \\
+Gridlock Detection & 200 s & Episode ends if no vehicles depart for 200s \\
+Yellow Interval & 3 s & Safe green-to-yellow transition \\
+Local Decisions per Round & 1000 & Policy decisions per agent per round \\
+Federated Rounds & 300 & Total federated aggregation cycles \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{State, Action, and Reward Design}
+
+\subsection{Observation Space}
+
+For each lane at junction $i$, the observation includes local traffic and shared upstream signals. The state contains halted vehicle counts and cumulative waiting times per lane, plus shared queue and waiting estimates derived from upstream junctions. Shared terms are computed from the latest upstream metrics and weighted by turn ratios estimated from outgoing-lane vehicle counts. The current traffic light phase is appended as a normalized scalar so that the agent is aware of the present control state.
+
+All observations are padded to a fixed dimension using the maximum lane count $L_{\max}=6$:
+\begin{equation}
+\mathbf{s}_i^t = [\mathbf{q}_i, \mathbf{w}_i, \mathbf{q}_i^{\text{shared}}, \mathbf{w}_i^{\text{shared}}, \phi_i^{\text{norm}}] \in \mathbb{R}^{25},
+\end{equation}
+where $\phi_i^{\text{norm}} = \phi_i / \text{max\_phases}$.
+
+\textbf{Normalization.} We use constant scaling for both training and deployment: $\hat{q}=q/15$ and $\hat{w}=w/300$. The constants 15 and 300 are computed from the number of vehicles observed in the network. Shared components are weighted by $\alpha_s=0.5$ before scaling and all values are clipped to $[-10,10]$.
+
+
+\subsection{Action Space}
+
+Each agent selects a discrete action encoding both green phase and green duration. The action space size is $4 \times 7 = 28$ options (max phases $\times$ durations). Effective actions depend on the junctions available green phases (2 per junction). The durations used in training are $\{30,40,50,60,80,100,120\}$ seconds, and actions are decoded as:
+\begin{align}
+\text{duration\_idx} &= a \bmod 7 \\
+\text{green\_phase\_idx} &= \lfloor a/7 \rfloor \bmod \text{num\_green\_phases} \\
+\text{duration} &= [30,40,50,60,80,100,120][\text{duration\_idx}] \\
+\text{phase} &= \text{green\_phases}[\text{green\_phase\_idx}]
+\end{align}
+
+\subsection{Reward Function}
+
+Rewards are computed per junction using queue length and waiting time, with waiting time weighted to stabilize training:
+\begin{equation}
+ r_i = -\frac{\text{total queue} + 0.5 \times \text{total waiting time}}{\text{number of lanes}}.
+\end{equation}
+A reward floor of $-200.0$ is applied to prevent extreme spikes. This reward structure encourages reduction of congestion while avoiding unstable gradients caused by large waiting-time values.
+
+\section{Agent Design}
+
+\subsection{CF-MADRL (PPO) Agent}
+
+Each junction runs an independent PPO policy (no parameter sharing). Policies share the same observation and action dimensions and are mapped directly by junction ID. The policy network is a two-layer MLP with ReLU activation, and PPO uses a scheduled learning rate and entropy coefficient to balance exploration and convergence.
+
+\begin{table}[H]
+\centering
+\caption{PPO agent configuration (CF-MADRL).}
+\label{tab:ppo_agent_cfg}
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Observation Dim & 25 \\
+Action Dim & 28 \\
+Hidden Layers & [384, 320] (ReLU) \\
+Learning Rate Schedule & 0.0005 $\rightarrow$ 0.00015 $\rightarrow$ 0.00005 \\
+Entropy Schedule & 0.05 $\rightarrow$ 0.01 $\rightarrow$ 0.001 \\
+Train Batch Size & 256 \\
+Minibatch Size & 64 \\
+SGD Epochs & 3 \\
+Discount Factor $\gamma$ & 0.95 \\
+GAE Lambda $\lambda$ & 0.95 \\
+Clip Param $\epsilon$ & 0.2 \\
+\hline
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{PPO policy network architecture.}
+\label{tab:ppo_arch}
+\begin{tabular}{|l|r|r|r|}
+\hline
+\textbf{Layer} & \textbf{Input} & \textbf{Output} & \textbf{Parameters} \\
+\hline
+Input & 25 & -- & -- \\
+Hidden 1 & 25 & 384 & 9,984 \\
+Hidden 2 & 384 & 320 & 123,200 \\
+Action Head & 320 & 28 & 8,988 \\
+Value Head & 320 & 1 & 321 \\
+\hline
+Total & & & 142,493 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Q-Table Agent}
+
+The Q-Table baseline discretizes the continuous observation into bins for queues, waits, shared queues, shared waits, and a phase bucket. It uses epsilon-greedy exploration with learning rate and epsilon decay after each round.
+
+\begin{table}[H]
+\centering
+\caption{Q-Table configuration.}
+\label{tab:qtable_cfg}
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Learning Rate $\alpha$ & 0.0005 \\
+Discount Factor $\gamma$ & 0.95 \\
+Epsilon (start) & 1.0 \\
+Epsilon Min & 0.0001 \\
+Epsilon Decay & 0.955 \\
+Learning Rate Decay & 0.99 \\
+Bins & 4 \\
+Bin Edges & [-10.0, -0.5, 0.5, 2.0, 10.0] \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{DQN Agent}
+
+Each junction runs an independent DQN with replay buffer and target network updates. The Q-network uses the same hidden sizes as PPO and is optimized with Adam and MSE loss with gradient clipping (max\_norm=10).
+
+\begin{table}[H]
+\centering
+\caption{DQN configuration.}
+\label{tab:dqn_cfg}
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Learning Rate & 0.0005 \\
+Learning Rate Decay & 0.99 \\
+Discount Factor $\gamma$ & 0.95 \\
+Epsilon (start) & 1.0 \\
+Epsilon Min & 0.0001 \\
+Epsilon Decay & 0.955 \\
+Batch Size & 128 \\
+Replay Buffer Size & 50,000 \\
+Target Update Freq & 500 \\
+Hidden Layers & [384, 320] (ReLU) \\
+\hline
+\end{tabular}
+\end{table}
+
+\section{Training Process}
+
+Training proceeds in federated rounds. For each round, all junction agents interact with the shared SUMO environment for 1000 decisions, collect trajectories, and update their local policies. For CF-MADRL, PPO updates are applied locally and then the federated server clusters agents using K-Means (K=2). Cluster-wise FedAvg is computed and blended with each agent’s local weights using $\alpha=0.5$, so each junction keeps some individuality while still benefiting from shared learning. Early stopping is enabled with patience of 10 epochs and a minimum average reward improvement of 0.5. Checkpoints are saved every 10 rounds. Q-Table and DQN baselines use the same environment and step counts, but apply their own update rules: Q-learning updates on discretized states and DQN updates from replay buffer batches with periodic target network syncs.
+
+\section{Evaluation Process}
+
+Evaluation runs all agents (CF-MADRL, Q-Table, and DQN) under the same simulation settings to produce consistent logs. The fixed-time program uses 42 seconds green and 3 seconds yellow per phase, and the simulation runs for 100,000 steps. For learning-based agents, the latest checkpoints are loaded and policies are executed without exploration. Per-junction logs include rewards, queues, and waiting times. Detailed comparisons and results are reported in the Results chapter.
+
+\section{Vehicle Detection and Real Hardware Flow}
+
+\subsection{Hardware Working Diagram}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\textwidth]{img/working_diagram_final.png}
+\caption{Hardware working diagram.}
+\label{fig:hardware_working}
+\end{figure}
+
+This diagram summarizes the real-hardware data flow. ESP32 camera streams provide video feeds to the Raspberry Pi. The Raspberry Pi performs vehicle detection and policy inference, then returns a response containing the next phase and duration. Each ESP32 applies the phase change to its connected traffic light, optionally showing yellow when a phase switch is required. This structure allows multiple camera feeds to be processed centrally while decision execution happens at each junction.
+
+\subsection{YOLO Monitoring Configuration}
+
+The Raspberry Pi uses YOLO-based lane monitoring to estimate queue length and average waiting time from ESP32 camera streams. Configuration is provided in \texttt{configs/yolo\_config.yaml}.
+
+\begin{table}[H]
+\centering
+\caption{YOLO monitoring configuration (Raspberry Pi).}
+\label{tab:yolo_config}
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Parameter} & \textbf{Value} \\
+\hline
+Primary Model & models/yolo/best.pt \\
+Fallback Model & models/yolo/yolo26n.pt \\
+Confidence Threshold & 0.3 \\
+Vehicle Classes & [1, 2, 3, 5, 7] (COCO: car, motorcycle, bus, truck, train) \\
+Lane Config & configs/yolo\_config.yaml (camera URL + ROI per lane) \\
+Stop Speed & 3.0 km/h \\
+Pixel-to-Meter & 0.05 \\
+Max Retries & 5 \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Deployment Hardware}
+
+\begin{table}[H]
+\centering
+\caption{Hardware specifications.}
+\label{tab:hardware_specs}
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Component} & \textbf{Value} \\
+\hline
+Edge Device & Raspberry Pi 5 \\
+Inference Framework & PyTorch (CPU) \\
+Camera & ESP32 Cam \\
+Signal Control & ESP32 via GPIO \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{ESP32 API Interface}
+
+The Raspberry Pi runs a FastAPI server. ESP32 polls the API at the end of each phase cycle and uses the returned decision to control the physical traffic lights. Optional yellow is applied when the target phase differs from the last phase. The API returns JSON with fields \texttt{phase}, \texttt{duration}, and \texttt{yellow\_required}.
+
+\begin{table}[H]
+\centering
+\caption{Raspberry Pi API for ESP32 control.}
+\label{tab:api_config}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Item} & \textbf{Detail} \\
+\hline
+Server & FastAPI (uvicorn) on port 8000 \\
+Endpoint & \texttt{GET /get\_phase} \\
+Response Model & \texttt{\{phase, duration, yellow\_required\}} \\
+Default Response & phase=0, duration=30, yellow\_required=false \\
+Phase Mapping & 0 = East-West green, 2 = North-South green \\
+Duration Range & 10-60 s (step 10) \\
+Health Check & \texttt{GET /health} \\
+\hline
+\end{tabular}
+\end{table}
+
+Deployment inference uses local queues and waits (padded to \texttt{max\_lanes}=6) plus the current phase (no shared state). The Raspberry Pi uses a PPO policy loaded from \texttt{models/model.pt}. In deployment, the action is decoded into one of the durations $\{10,20,30,40,50,60\}$ seconds, consistent with the inference engine configuration.
+
+\section{Implementation Challenges}
+
+Key engineering challenges included multi-agent coordination with non-IID traffic, stabilizing rewards under varying queue lengths, and bridging the simulation-to-reality gap by reusing normalization statistics in deployment.

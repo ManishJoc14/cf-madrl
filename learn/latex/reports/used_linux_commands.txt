@@ -1,0 +1,40 @@
+\section{Used Linux Commands}
+
+This section lists the key Linux commands used during Raspberry Pi deployment, configuration, monitoring, and debugging. The commands are taken from the project Pi documentation and adjusted to the current setup.
+
+\begin{table}[H]
+\centering
+\caption{Important Linux commands used in the project}
+\label{tab:linux_commands}
+\begin{tabular}{|l|l|}
+\hline
+\textbf{Command} & \textbf{Purpose} \\
+\hline
+\texttt{scp -r pi\_deploy/ pi@192.168.1.XXX:~/cf-madrl/} & Copy deployment folder to Raspberry Pi \\
+\texttt{ssh pi@192.168.1.XXX} & SSH into Raspberry Pi \\
+\texttt{chmod +x scripts/setup.sh} & Make setup script executable \\
+\texttt{./scripts/setup.sh} & One-time installation and environment setup \\
+\texttt{source .venv/bin/activate} & Activate Python virtual environment \\
+\texttt{pip install -r requirements.txt} & Install Python dependencies \\
+\texttt{python3 tools/find\_esp32.py} & Discover ESP32 camera IP on network \\
+\texttt{nano configs/yolo\_config.yaml} & Edit YOLO config and camera URLs \\
+\texttt{python3 main.py --mode real --port 8000} & Run inference + API server (real mode) \\
+\texttt{python3 main.py --mode real --display} & Run with live video display \\
+\texttt{python3 main.py --mode test} & Run in test mode (no cameras) \\
+\texttt{ps aux | grep main.py} & Check if inference process is running \\
+\texttt{nohup python3 main.py --mode real > traffic.log 2>&1 \&} & Run in background with log file \\
+\texttt{tail -f traffic.log} & View live logs \\
+\texttt{pkill -f main.py} & Stop the running process \\
+\texttt{ping 192.168.1.XXX} & Test connectivity to ESP32 camera \\
+\texttt{netstat -tlnp | grep 8000} & Check if API port is in use \\
+\texttt{curl http://pi-ip:8000/get\_phase} & Test API response from terminal \\
+\texttt{hostname -I} & Check Raspberry Pi IP address \\
+\texttt{ls -la models/} & Verify model files and permissions \\
+\texttt{crontab -e} & Add auto-start on boot (optional) \\
+\texttt{sudo systemctl enable cf-madrl} & Enable systemd service on boot \\
+\texttt{sudo systemctl start cf-madrl} & Start systemd service \\
+\texttt{sudo systemctl status cf-madrl} & Check service status \\
+\texttt{sudo journalctl -u cf-madrl -f} & View service logs \\
+\hline
+\end{tabular}
+\end{table}

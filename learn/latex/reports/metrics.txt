@@ -1,0 +1,21 @@
+\section{Evaluation Methods}
+
+We evaluate performance using standard traffic-efficiency metrics that capture both the driver experience and overall network flow. Let $\mathcal{V}$ be the set of vehicles observed in the evaluation window, with $|\mathcal{V}|=N$, and let $\mathcal{L}$ be the set of monitored incoming lanes.
+
+\subsection{Average Waiting Time}
+
+Average waiting time measures how long vehicles remain in near-stop or stop-and-go conditions. For vehicle $v$, let $w_v$ be its cumulative waiting time (in seconds) over the trip. The metric is:
+\begin{equation}
+  \overline{W} = \frac{1}{N}\sum_{v \in \mathcal{V}} w_v
+\end{equation}
+Lower values mean smoother flow and fewer prolonged stops. This is a user-centric metric because it directly reflects the delay drivers feel at signals.
+
+\subsection{Average Queue Length}
+
+Average queue length represents congestion at approaches to an intersection. Because queues change over time, we measure the number of halted vehicles at every time step and then take the average. Let $q_l(t)$ be the number of halted vehicles on lane $l \in \mathcal{L}$ at time step $t$, and let $T$ be the total number of measured time steps. We compute:
+\begin{equation}
+  \overline{Q} = \frac{1}{T|\mathcal{L}|} \sum_{t=1}^{T} \sum_{l \in \mathcal{L}} q_l(t)
+\end{equation}
+Lower values imply better phase allocation and a reduced risk of spillback into upstream intersections.
+
+All controllers (including the fixed-time baseline) are evaluated under identical demand, route files, and simulator settings. In general, a better controller achieves lower $\overline{W}$ and $\overline{Q}$.

@@ -1,0 +1,50 @@
+\chapter{REQUIREMENT ANALYSIS}
+
+This section outlines the hardware and software resources required to design, train, simulate, and validate the proposed privacy-aware adaptive traffic control system.
+
+\section{Hardware Tools}
+
+The following hardware components are required for building, simulating, and demonstrating the privacy-aware adaptive traffic control system:
+
+\subsection{Raspberry Pi 5 (Edge Server)}
+The Raspberry Pi 5 acts as the main edge server. It runs the YOLO model for vehicle detection and the CF-MADRL policy for real-time phase selection. It receives video streams from ESP32 cameras, performs inference locally, and sends control decisions back to the junction controllers.
+
+\subsection{ESP32 DevKit / ESP32-CAM}
+The ESP32 platform provides the sensing and actuation interface at the junction. It streams video to the Raspberry Pi, receives phase decisions, and controls the physical traffic LEDs and timing display. The ESP32 is also used for rapid firmware development through the Arduino IDE.
+
+\subsection{LED-Based Traffic Signal Indicators (RYG)}
+Red, yellow, and green LEDs represent the signal states for each direction. They provide a clear visual output for validating phase changes during HIL testing.
+
+\subsection{OLED Display (Countdown Timer)}
+A small OLED display shows the remaining time of the active phase. This makes the signal timing visible and improves debugging and demonstration clarity.
+
+\subsection{Camera Module}
+An ESP32-CAM or USB/Raspberry Pi camera captures traffic flow at the junction. The live feed is processed by YOLO on the Raspberry Pi to extract vehicle counts and queue estimates for the RL state.
+
+\subsection{Power Regulation (LM-2596 Buck Converter)}
+The LM-2596 buck converter provides a stable 5V supply by stepping down input voltage, protecting the Raspberry Pi, ESP32, and display modules from fluctuations.
+
+\subsection{Line-Follower Vehicle Platform}
+The vehicle prototype validates sensing and actuation in a controlled lane. It includes an Arduino Nano controller, QTR-8RC IR sensor array, TB6612FNG motor driver, N20 gear motors, wheels, and a 3D printed chassis. The HC-05 Bluetooth module enables remote start/stop, and a buck converter provides regulated 5V power to the controller.
+
+\subsection{Simulation and Training System}
+A desktop or laptop with a capable CPU/GPU is required for SUMO simulation, multi-agent training (PPO, DQN, Q-Table), and federated clustering experiments. This system is used to train and evaluate models before hardware deployment.
+
+\section{Software Tools}
+
+The following software tools are required for system development, training, deployment, and evaluation:
+
+\subsection{SUMO Traffic Simulator}
+SUMO \cite{sumo2018} generates realistic traffic flow patterns and supports controlled experiments with varied vehicle types, routes, and demand levels. It forms the base environment for training and evaluation.
+
+\subsection{Ultralytics YOLO (YOLO26 Nano)}
+The YOLO26 nano model is used for real-time vehicle detection from camera feeds. It provides vehicle counts and lane-level occupancy while avoiding direct storage of personal identifiers, supporting privacy-aware operation.
+
+\subsection{Deep Learning Frameworks}
+PyTorch is used to implement the CF-MADRL framework, including PPO training, inference, and federated parameter aggregation. It provides efficient model development and deployment on edge hardware.
+
+\subsection{Programming and Development Tools}
+Python is the primary language for simulation control, training, and evaluation. Supporting libraries include NumPy, OpenCV, Matplotlib, and utility packages for data processing and visualization. Arduino IDE is used for ESP32 firmware development.
+
+\subsection{Version Control and Documentation Tools}
+Git and GitHub manage source code and experiments. LaTeX (Overleaf) is used for documentation, figures, tables, and equations. Project management tools (e.g., Trello) can be used to track tasks and milestones.
